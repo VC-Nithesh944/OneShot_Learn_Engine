@@ -34,3 +34,16 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Push Notifications
+
+If you enable browser push notifications, set these environment variables:
+
+```bash
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=your_public_vapid_key
+VAPID_PRIVATE_KEY=your_private_vapid_key
+VAPID_SUBJECT=mailto:you@example.com
+CRON_SECRET=your_random_cron_secret
+```
+
+`NEXT_PUBLIC_VAPID_PUBLIC_KEY` must be available to the browser so the client can subscribe to push notifications.
