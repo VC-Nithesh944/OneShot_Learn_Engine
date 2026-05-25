@@ -122,6 +122,13 @@ async function extractTextFromFile(file) {
 
 // ── Route handler ─────────────────────────────────────────────────────────────
 
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    message: "Use POST with multipart form data to upload a PDF or text file.",
+  });
+}
+
 export async function POST(request) {
   const { userId } = await auth();
   if (!userId)
