@@ -79,9 +79,14 @@ async function extractTextFromFile(file) {
     // Try to load a native canvas implementation first — pdfjs will
     // attempt to polyfill DOM APIs from `@napi-rs/canvas` if available.
     try {
-      await import("@napi-rs/canvas");
+      const { createRequire } = await import("node:module");
+      const require = createRequire(import.meta.url);
+      require("@napi-rs/canvas");
     } catch (err) {
-      console.warn("[extract] @napi-rs/canvas not available:", err?.message ?? err);
+      console.warn(
+        "[extract] @napi-rs/canvas not available:",
+        err?.message ?? err,
+      );
     }
 
     // Dynamic import prevents pdf-parse from calling fs.readFileSync at
