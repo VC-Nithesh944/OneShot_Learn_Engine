@@ -14,16 +14,9 @@ import { pathToFileURL } from "node:url";
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 min — large PDFs + Gemini chunking
 
-import { PDFParse } from "pdf-parse";
-
-PDFParse.setWorker(
-  pathToFileURL(
-    join(
-      process.cwd(),
-      "node_modules/pdf-parse/dist/pdf-parse/web/pdf.worker.mjs",
-    ),
-  ).href,
-);
+// Defer loading `pdf-parse` until runtime to avoid importing
+// `pdfjs-dist` at module-evaluation time (it expects DOM globals).
+let pdfWorkerInitialized = false;
 
 // ── Category helpers ──────────────────────────────────────────────────────────
 
@@ -83,9 +76,30 @@ async function extractTextFromFile(file) {
   }
 
   if (name.endsWith(".pdf")) {
+    // Try to load a native canvas implementation first — pdfjs will
+    // attempt to polyfill DOM APIs from `@napi-rs/canvas` if available.
+    try {
+      await import("@napi-rs/canvas");
+    } catch (err) {
+      console.warn("[extract] @napi-rs/canvas not available:", err?.message ?? err);
+    }
+
     // Dynamic import prevents pdf-parse from calling fs.readFileSync at
     // module load time, which crashes Next.js App Router on cold start.
     const { PDFParse } = await import("pdf-parse");
+
+    if (!pdfWorkerInitialized) {
+      PDFParse.setWorker(
+        pathToFileURL(
+          join(
+            process.cwd(),
+            "node_modules/pdf-parse/dist/pdf-parse/web/pdf.worker.mjs",
+          ),
+        ).href,
+      );
+      pdfWorkerInitialized = true;
+    }
+
     const parser = new PDFParse({ data: buffer });
     const result = await parser.getText();
     return result.text;
