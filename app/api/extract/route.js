@@ -136,23 +136,55 @@ export async function POST(request) {
 
   const admin = createAdminClient();
 
-  // Parse multipart form
-  let formData;
-  try {
-    formData = await request.formData();
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid request — expected multipart form data." },
-      { status: 400 },
-    );
-  }
+  const contentType = request.headers.get("content-type") ?? "";
 
-  const file = formData.get("file");
-  const subject = String(formData.get("subject") ?? "").trim();
-  const subjectCode = String(formData.get("subjectCode") ?? "custom").trim();
+  let rawText = null;
+  let fileName = null;
+  let subject = "";
+  let subjectCode = "custom";
 
-  if (!file || typeof file === "string") {
-    return NextResponse.json({ error: "No file attached." }, { status: 400 });
+  if (contentType.includes("application/json")) {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid request — expected JSON body." },
+        { status: 400 },
+      );
+    }
+
+    rawText = String(body?.text ?? "");
+    fileName = String(body?.fileName ?? "uploaded-notes.txt");
+    subject = String(body?.subject ?? "").trim();
+    subjectCode = String(body?.subjectCode ?? "custom").trim();
+  } else {
+    // Parse multipart form for smaller fallback uploads.
+    let formData;
+    try {
+      formData = await request.formData();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid request — expected multipart form data." },
+        { status: 400 },
+      );
+    }
+
+    const file = formData.get("file");
+    subject = String(formData.get("subject") ?? "").trim();
+    subjectCode = String(formData.get("subjectCode") ?? "custom").trim();
+
+    if (!file || typeof file === "string") {
+      return NextResponse.json({ error: "No file attached." }, { status: 400 });
+    }
+
+    fileName = file.name;
+    try {
+      rawText = await extractTextFromFile(file);
+    } catch (err) {
+      console.error("[extract] file parse error:", err.message);
+      return NextResponse.json({ error: err.message }, { status: 422 });
+    }
   }
 
   if (!subject) {
@@ -167,14 +199,14 @@ export async function POST(request) {
     .from("study_sessions")
     .select("id, topic, concept_count, concepts(id)")
     .eq("user_id", userId)
-    .eq("filename", file.name)
+    .eq("filename", fileName)
     .eq("is_processed", true)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (cached?.id && (cached.concepts?.length ?? 0) > 0) {
-    console.log(`[extract] cache hit — "${file.name}"`);
+    console.log(`[extract] cache hit — "${fileName}"`);
     return NextResponse.json({
       session_id: cached.id,
       topic: cached.topic,
@@ -182,15 +214,6 @@ export async function POST(request) {
       from_cache: true,
       concepts: cached.concepts.map((c) => c.id),
     });
-  }
-
-  // ── Extract raw text ──────────────────────────────────────────────────────
-  let rawText;
-  try {
-    rawText = await extractTextFromFile(file);
-  } catch (err) {
-    console.error("[extract] file parse error:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 422 });
   }
 
   // Sanitize before any further use (fixes unicode escape errors)
@@ -212,7 +235,7 @@ export async function POST(request) {
     .from("study_sessions")
     .insert({
       user_id: userId,
-      filename: file.name,
+      filename: fileName,
       original_text: rawText.slice(0, 50000),
       subject,
       subject_code: subjectCode || "custom",

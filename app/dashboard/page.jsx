@@ -314,6 +314,35 @@ function fetchJson(url, options = {}) {
   );
 }
 
+let browserPdfWorkerConfigured = false;
+
+async function extractTextFromSelectedFile(file) {
+  const fileName = file.name.toLowerCase();
+
+  if (fileName.endsWith(".txt")) {
+    return file.text();
+  }
+
+  if (fileName.endsWith(".pdf")) {
+    const { PDFParse } = await import("pdf-parse");
+
+    if (!browserPdfWorkerConfigured) {
+      PDFParse.setWorker(
+        "https://cdn.jsdelivr.net/npm/pdf-parse@2.4.5/dist/pdf-parse/web/pdf.worker.mjs",
+      );
+      browserPdfWorkerConfigured = true;
+    }
+
+    const parser = new PDFParse({
+      data: new Uint8Array(await file.arrayBuffer()),
+    });
+    const result = await parser.getText();
+    return result.text;
+  }
+
+  throw new Error("DOCX is not supported yet. Please upload a PDF or TXT file.");
+}
+
 function normalizeKeywords(keywords) {
   if (Array.isArray(keywords)) return keywords.filter(Boolean);
   if (typeof keywords === "string") {
@@ -2977,19 +3006,21 @@ export default function DashboardPage() {
   const handleUpload = async (file, subjectName) => {
     if (!file || !subjectName) return;
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("subject", subjectName);
-    formData.append("subjectCode", "custom");
-
     setLoading((current) => ({ ...current, upload: true }));
     setUploadError("");
     setUploadResult(null);
 
     try {
+      const extractedText = await extractTextFromSelectedFile(file);
       const data = await fetchJson("/api/extract", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: extractedText,
+          fileName: file.name,
+          subject: subjectName,
+          subjectCode: "custom",
+        }),
       });
       setUploadResult(data);
       refreshData();
