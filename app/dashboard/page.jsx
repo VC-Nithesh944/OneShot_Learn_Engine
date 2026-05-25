@@ -340,7 +340,9 @@ async function extractTextFromSelectedFile(file) {
     return result.text;
   }
 
-  throw new Error("DOCX is not supported yet. Please upload a PDF or TXT file.");
+  throw new Error(
+    "DOCX is not supported yet. Please upload a PDF or TXT file.",
+  );
 }
 
 function normalizeKeywords(keywords) {
@@ -1251,7 +1253,7 @@ function UploadView({ onUpload, uploading, result, error }) {
       <div className="page-header">
         <h1>Upload Study Notes</h1>
         <div className="page-subtitle">
-          Upload a PDF, DOCX, or TXT file to automatically extract key concepts.
+          Upload a PDF or TXT file to automatically extract key concepts.
           Subject or chapter name is required.
         </div>
       </div>
@@ -2990,12 +2992,14 @@ export default function DashboardPage() {
       const data = await fetchJson(`/api/sessions/${session.id}/concepts`);
       setSessionConcepts(data.concepts ?? []);
     } catch (error) {
-      const initialConcept = normalizeConcept(dashboardData.dueConcepts[0]);
+      const fallbackConcept =
+        sessionConcepts[0] ?? dashboard?.dueConcepts?.[0] ?? null;
+      const initialConcept = normalizeConcept(fallbackConcept);
       setActiveConcept(initialConcept);
       setLearnMode(
         getRecommendedLearnMode(
           initialConcept,
-          dashboardData?.profile?.learning_style,
+          dashboard?.profile?.learning_style,
         ),
       );
     } finally {

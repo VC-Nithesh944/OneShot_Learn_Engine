@@ -12,7 +12,7 @@ import { pathToFileURL } from "node:url";
 
 // pdf-parse uses Node.js `fs` — must run in Node runtime, not Edge
 export const runtime = "nodejs";
-export const maxDuration = 300; // 5 min — large PDFs + Gemini chunking
+export const maxDuration = 600; // 5 min — large PDFs + Gemini chunking
 
 // Defer loading `pdf-parse` until runtime to avoid importing
 // `pdfjs-dist` at module-evaluation time (it expects DOM globals).
