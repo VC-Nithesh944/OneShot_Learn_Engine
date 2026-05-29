@@ -7,12 +7,35 @@ import { auth } from "@clerk/nextjs/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
+function shouldSurfaceExamPriority(concept) {
+  const retentionValue = Number(
+    concept?.retention_pct ?? concept?.retentionPct ?? 0,
+  );
+  const examProbability = Number(
+    concept?.exam_probability ?? concept?.examProbability ?? 0,
+  );
+  const examSummary = String(
+    concept?.session_exam_summary ?? concept?.exam_summary ?? "",
+  ).toLowerCase();
+
+  if (retentionValue <= 70) return true;
+  if (examProbability >= 4) return true;
+  return /compare|difference|process|steps|architecture|formula|algorithm|advantage|disadvantage|vs\.?/.test(
+    examSummary,
+  );
+}
+
 export async function GET() {
   const { userId } = await auth();
   if (!userId)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const supabase = await createServerSupabaseClient();
+  const FREE_DAILY_UPLOAD_LIMIT = 2;
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const tomorrowStart = new Date(todayStart);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
 
   // Run all queries in parallel for speed
   const [
@@ -22,6 +45,7 @@ export async function GET() {
     conceptsRes,
     sessionsCountRes,
     attemptsRes,
+    uploadsTodayRes,
   ] = await Promise.all([
     supabase
       .from("user_profiles")
@@ -37,7 +61,7 @@ export async function GET() {
     // All processed sessions for session-level retention overview
     supabase
       .from("study_sessions")
-      .select("id, topic, filename, created_at, concept_count")
+      .select("id, topic, filename, created_at, concept_count, exam_summary")
       .eq("user_id", userId)
       .eq("is_processed", true)
       .order("created_at", { ascending: false })
@@ -55,9 +79,17 @@ export async function GET() {
 
     supabase
       .from("quiz_attempts")
-      .select("concept_id, score, quality_rating, attempted_at")
+      .select(
+        "concept_id, score, quality_rating, attempted_at, review_in_future, estimated_retention_pct",
+      )
       .eq("user_id", userId)
       .order("attempted_at", { ascending: false }),
+
+    supabase
+      .from("study_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gte("created_at", todayStart.toISOString()),
   ]);
 
   const profile = profileRes.data;
@@ -65,12 +97,24 @@ export async function GET() {
   const concepts = conceptsRes.data ?? [];
   const sessionsCount = sessionsCountRes.count ?? 0;
   const attempts = attemptsRes.data ?? [];
+  const uploadsUsedToday = uploadsTodayRes.count ?? 0;
+  const uploadsRemaining = Math.max(
+    0,
+    FREE_DAILY_UPLOAD_LIMIT - uploadsUsedToday,
+  );
 
   const latestAttemptByConcept = new Map();
   const attemptCountByConcept = new Map();
+  const latestRetentionByConcept = new Map();
   for (const attempt of attempts) {
     if (!latestAttemptByConcept.has(attempt.concept_id)) {
       latestAttemptByConcept.set(attempt.concept_id, attempt);
+    }
+    if (!latestRetentionByConcept.has(attempt.concept_id)) {
+      const attemptRetention = Number(attempt.estimated_retention_pct);
+      if (Number.isFinite(attemptRetention)) {
+        latestRetentionByConcept.set(attempt.concept_id, attemptRetention);
+      }
     }
     attemptCountByConcept.set(
       attempt.concept_id,
@@ -78,9 +122,21 @@ export async function GET() {
     );
   }
 
+  const conceptsWithLatestRetention = concepts.map((concept) => {
+    const latestRetention = latestRetentionByConcept.get(concept.id);
+    return Number.isFinite(latestRetention)
+      ? { ...concept, retention_pct: latestRetention }
+      : concept;
+  });
+
   const conceptsById = new Map();
-  for (const concept of concepts) {
+  for (const concept of conceptsWithLatestRetention) {
     if (concept?.id) conceptsById.set(concept.id, concept);
+  }
+
+  const sessionsById = new Map();
+  for (const session of sessions) {
+    if (session?.id) sessionsById.set(session.id, session);
   }
 
   const dueConcepts = (dueRes.data ?? []).map((concept) => {
@@ -88,13 +144,30 @@ export async function GET() {
     const fullConcept = conceptId ? conceptsById.get(conceptId) : null;
     const merged = fullConcept ? { ...fullConcept, ...concept } : concept;
     const attemptCount = attemptCountByConcept.get(conceptId) ?? 0;
+    const latestAttempt = conceptId
+      ? latestAttemptByConcept.get(conceptId)
+      : null;
+    const session = merged.session_id
+      ? sessionsById.get(merged.session_id)
+      : null;
+    const reviewInFuture = latestAttempt?.review_in_future;
+    const examPriorityDue =
+      reviewInFuture === false
+        ? shouldSurfaceExamPriority({
+            ...merged,
+            session_exam_summary: session?.exam_summary ?? null,
+          })
+        : true;
     return {
       ...merged,
+      review_in_future: reviewInFuture,
+      session_exam_summary: session?.exam_summary ?? null,
       has_quiz_attempt: Boolean(
         conceptId ? latestAttemptByConcept.has(conceptId) : false,
       ),
       quiz_attempt_count: attemptCount,
       is_mastered: attemptCount >= 4,
+      due_by_exam_priority: reviewInFuture === false ? examPriorityDue : false,
       last_quiz_at:
         conceptId && latestAttemptByConcept.has(conceptId)
           ? latestAttemptByConcept.get(conceptId).attempted_at
@@ -103,13 +176,27 @@ export async function GET() {
   });
 
   const reviewedDueConcepts = dueConcepts.filter(
-    (concept) => concept.has_quiz_attempt && !concept.is_mastered,
+    (concept) =>
+      concept.has_quiz_attempt &&
+      !concept.is_mastered &&
+      (concept.review_in_future !== false || concept.due_by_exam_priority),
   );
+
+  const todayEnd = new Date(todayStart);
+  todayEnd.setDate(todayEnd.getDate() + 1);
+
+  const dueTodayConcepts = reviewedDueConcepts.filter((concept) => {
+    const nextReviewAt = concept?.next_review_at ?? concept?.nextReviewAt;
+    if (!nextReviewAt) return true;
+    const nextReviewTime = new Date(nextReviewAt).getTime();
+    if (!Number.isFinite(nextReviewTime)) return true;
+    return nextReviewTime < todayEnd.getTime();
+  });
 
   const hasAnyQuizzes = latestAttemptByConcept.size > 0;
 
   const conceptsBySession = new Map();
-  for (const concept of concepts) {
+  for (const concept of conceptsWithLatestRetention) {
     const sessionId = concept.session_id;
     if (!sessionId) continue;
     if (!conceptsBySession.has(sessionId)) conceptsBySession.set(sessionId, []);
@@ -206,7 +293,7 @@ export async function GET() {
       return leftRetention - rightRetention;
     });
 
-  const globalRetentionValues = concepts
+  const globalRetentionValues = conceptsWithLatestRetention
     .filter((concept) => (attemptCountByConcept.get(concept.id) ?? 0) > 0)
     .map((concept) => {
       const storedRetention = Number(concept.retention_pct);
@@ -229,7 +316,7 @@ export async function GET() {
     isNewUser,
     profile,
     stats: {
-      dueCount: reviewedDueConcepts.length,
+      dueCount: dueTodayConcepts.length,
       totalConcepts: attemptedConceptCount,
       learnedConcepts: attemptedConceptCount,
       totalSessionConcepts,
@@ -244,7 +331,17 @@ export async function GET() {
           : null,
     },
     hasAnyQuizzes,
-    dueConcepts: reviewedDueConcepts,
+    uploadQuota: {
+      plan: "free",
+      dailyLimit: FREE_DAILY_UPLOAD_LIMIT,
+      usedToday: uploadsUsedToday,
+      remainingToday: uploadsRemaining,
+      resetAt: tomorrowStart.toISOString(),
+    },
+    dueConcepts: dueTodayConcepts.map((concept) => ({
+      ...concept,
+      is_due_review: true,
+    })),
     sessionRetentionOverview,
     // notifications removed: browser push replaces in-app reminders
   });

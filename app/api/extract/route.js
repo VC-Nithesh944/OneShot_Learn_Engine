@@ -136,6 +136,36 @@ export async function POST(request) {
 
   const admin = createAdminClient();
 
+  // ── Free-tier daily upload guard ───────────────────────────────────────
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const { count: todayUploads } = await admin
+      .from("study_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gte("created_at", todayStart.toISOString());
+
+    const FREE_DAILY_UPLOAD_LIMIT = 2;
+    if ((todayUploads ?? 0) >= FREE_DAILY_UPLOAD_LIMIT) {
+      return NextResponse.json(
+        {
+          error: `You've used your ${FREE_DAILY_UPLOAD_LIMIT} free uploads for today. Upgrade to Premium for unlimited uploads.`,
+          code: "DAILY_LIMIT_REACHED",
+          limitType: "uploads",
+        },
+        { status: 429 },
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[extract] failed to check daily upload count:",
+      err?.message ?? err,
+    );
+    // Continue — failure to read the count should not block a user from uploading.
+  }
+
   const contentType = request.headers.get("content-type") ?? "";
 
   let rawText = null;

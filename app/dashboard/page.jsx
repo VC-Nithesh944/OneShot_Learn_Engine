@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { FaCheck } from "react-icons/fa";
+import { FaCircleCheck } from "react-icons/fa6";
 import Skeleton from "react-loading-skeleton";
 import { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
@@ -151,8 +153,43 @@ button, input, select { font: inherit; }
   width: 38px; height: 38px; flex: 0 0 auto; position: relative; display: grid; place-items: center;
   border-radius: 50%; border: 1px solid var(--panel); overflow: hidden; background: transparent;
 }
+.retention-ring-mastered {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  position: relative;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+}
 .retention-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); display: block; }
-.retention-ring-pct { position: relative; z-index: 1; font-size: 11px; font-weight: 700; }
+.retention-ring-pct { position: relative; z-index: 1; font-size: 11px; font-weight: 700; line-height: 1; display: grid; place-items: center; }
+.mastered-check-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 1.25em;
+  height: 1.25em;
+  border-radius: 999px;
+  background: rgba(43, 168, 136, 0.14);
+  color: var(--teal);
+  flex: 0 0 auto;
+}
+.mastered-check-badge svg { display: block; width: 100%; height: 100%; }
+.mastery-success-icon {
+  width: 96px;
+  height: 96px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 50px rgba(34, 197, 94, 0.22);
+  color: #22c55e;
+}
+.mastery-success-icon svg {
+  display: block;
+}
 .row-main { flex: 1; min-width: 0; }
 .row-title { font-weight: 700; }
 .row-meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
@@ -161,6 +198,25 @@ button, input, select { font: inherit; }
 .badge-today { background: var(--amber-soft); color: var(--amber); }
 .badge-urgent { background: var(--rose-soft); color: var(--rose); }
 .badge-exam { background: rgba(196,125,14,0.14); color: #9b5f00; }
+
+@keyframes masteryPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
 .empty { text-align: center; padding: 42px 20px; }
 .empty-title { font-family: 'Lora', serif; font-size: 22px; margin-bottom: 8px; }
@@ -206,6 +262,7 @@ button, input, select { font: inherit; }
 .option-list { display: grid; gap: 8px; margin-top: 12px; }
 .option { padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-strong); cursor: pointer; }
 .option.selected { background: var(--amber-soft); border-color: rgba(196,125,14,0.25); }
+.option.select { background: rgba(196,131,31,1); border-color: rgba(196,125,14,0.25); }
 .option.correct { background: var(--teal-soft); border-color: rgba(15,122,99,0.22); }
 .option.wrong { background: var(--rose-soft); border-color: rgba(184,64,64,0.22); }
 .score-box { margin-top: 16px; padding: 16px; border-radius: 18px; background: var(--teal-soft); border: 1px solid rgba(15,122,99,0.2); }
@@ -217,6 +274,55 @@ button, input, select { font: inherit; }
 .dropzone.drag { background: rgba(240,170,58,0.08); border-color: rgba(196,125,14,0.5); }
 .muted { color: var(--muted); }
 .notice { margin-bottom: 12px; }
+.upload-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.upload-quota-pill {
+  white-space: nowrap;
+  margin-top: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(196,125,14,0.28);
+  background: var(--amber-soft);
+  color: var(--amber);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  background: rgba(0, 0, 0, 0.62);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.premium-modal {
+  width: 100%;
+  max-width: 440px;
+  background: rgba(6, 5, 5, 1);
+  border-color: rgba(196,125,14,0.32);
+}
+.premium-crown {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(196,125,14,0.16);
+  color: var(--amber);
+  font-size: 22px;
+  margin-bottom: 10px;
+}
+.premium-actions {
+  margin-top: 18px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 .text-input {
   width: 100%;
   border: 1px solid var(--line);
@@ -286,6 +392,7 @@ button, input, select { font: inherit; }
   .main { padding: 14px; }
   .grid-4, .two-col { grid-template-columns: 1fr; }
   .row-card { align-items: flex-start; flex-direction: column; }
+  .upload-header-row { flex-direction: column; }
 }
 
 @media (min-width: 641px) {
@@ -303,12 +410,43 @@ const NAV_ITEMS = [
   { id: "learn", icon: "◎", label: "Learn" },
   { id: "quiz", icon: "⬡", label: "Quiz" },
 ];
+const PREMIUM_MONTHLY_PRICE = "₹149/month";
+const PAYMENT_GATEWAY_URL =
+  process.env.NEXT_PUBLIC_PREMIUM_CHECKOUT_URL ?? "/pricing?plan=premium";
+
+function estimateUploadSecondsFromChunkCount(chunkCount) {
+  const safeChunks = Math.max(1, Number(chunkCount) || 1);
+  return Math.max(18, Math.min(420, Math.round(18 + safeChunks * 9)));
+}
+
+function estimateUploadSeconds(file) {
+  if (!file?.size) return estimateUploadSecondsFromChunkCount(1);
+  const sizeMb = file.size / (1024 * 1024);
+  const approxChunks = Math.max(1, Math.ceil(file.size / 1024 / 18));
+  return Math.max(
+    estimateUploadSecondsFromChunkCount(approxChunks),
+    Math.max(18, Math.min(260, Math.round(16 + sizeMb * 34))),
+  );
+}
+
+function formatCountdown(totalSeconds) {
+  const safeSeconds = Math.max(0, Math.ceil(Number(totalSeconds) || 0));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
 
 function fetchJson(url, options = {}) {
   return fetch(url, { cache: "no-store", ...options }).then(
     async (response) => {
       const data = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(data?.error ?? "Request failed");
+      if (!response.ok) {
+        const err = new Error(data?.error ?? "Request failed");
+        err.status = response.status;
+        err.body = data;
+        throw err;
+      }
+
       return data;
     },
   );
@@ -428,6 +566,14 @@ function normalizeConcept(concept) {
       concept.isMastered === 1 ||
       String(concept.is_mastered ?? concept.isMastered ?? "").toLowerCase() ===
         "true",
+    isDueReview:
+      concept.is_due_review === true ||
+      concept.isDueReview === true ||
+      concept.is_due_review === 1 ||
+      concept.isDueReview === 1 ||
+      String(
+        concept.is_due_review ?? concept.isDueReview ?? "",
+      ).toLowerCase() === "true",
     nextReviewAt:
       concept.next_review_at ??
       concept.nextReviewAt ??
@@ -454,15 +600,28 @@ function relativeTime(value) {
   return `${weeks} week${weeks === 1 ? "" : "s"} ago`;
 }
 
-function dueLabel(nextReviewAt) {
-  if (!nextReviewAt) return "Due now";
+function reviewTimingLabelFromDays(days) {
+  const normalizedDays = Number(days);
+  if (!Number.isFinite(normalizedDays)) return "Due Today";
+  if (normalizedDays <= 0) return "Due Today";
+  if (normalizedDays === 1) return "Tomorrow";
+  return `in ${Math.round(normalizedDays)} days`;
+}
+
+function dueLabel(nextReviewAt, nowMs = Date.now()) {
+  if (!nextReviewAt) return "Due Today";
   const time = new Date(nextReviewAt).getTime();
-  if (Number.isNaN(time)) return "Due now";
-  const hours = Math.round((time - Date.now()) / 3600000);
-  if (hours <= 0) return "Due now";
-  if (hours < 24) return `in ${hours}h`;
-  const days = Math.round(hours / 24);
-  return days === 1 ? "in 1 day" : `in ${days} days`;
+  if (Number.isNaN(time)) return "Due Today";
+  const currentDay = new Date(nowMs);
+  currentDay.setHours(0, 0, 0, 0);
+  const targetDay = new Date(time);
+  targetDay.setHours(0, 0, 0, 0);
+  const dayDiff = Math.round(
+    (targetDay.getTime() - currentDay.getTime()) / 86400000,
+  );
+  if (dayDiff <= 0) return "Due Today";
+  if (dayDiff === 1) return "Tomorrow";
+  return `in ${dayDiff} days`;
 }
 
 function badgeForRetention(pct) {
@@ -824,7 +983,7 @@ function ProfileSkeleton() {
   );
 }
 
-function Ring({ pct = null, label = null }) {
+function Ring({ pct = null, label = null, icon = null }) {
   const size = 38;
   const stroke = 3;
   const hasValue = Number.isFinite(Number(pct));
@@ -838,6 +997,14 @@ function Ring({ pct = null, label = null }) {
       : safePct >= 40
         ? "#F0AA3A"
         : "#B84040";
+
+  if (icon === "tick") {
+    return (
+      <div className="retention-ring-mastered">
+        <MasteredCheckIcon size={18} />
+      </div>
+    );
+  }
 
   return (
     <div className="retention-ring">
@@ -855,9 +1022,24 @@ function Ring({ pct = null, label = null }) {
         />
       </svg>
       <span className="retention-ring-pct" style={{ color }}>
-        {label ?? (hasValue ? `${Math.round(safePct)}%` : "New")}
+        {icon === "tick" ? (
+          <FaCheck aria-hidden="true" size={12} />
+        ) : (
+          (label ?? (hasValue ? `${Math.round(safePct)}%` : "New"))
+        )}
       </span>
     </div>
+  );
+}
+
+function MasteredCheckIcon({ size = 16, className = "" }) {
+  return (
+    <span
+      className={`mastered-check-badge ${className}`.trim()}
+      aria-hidden="true"
+    >
+      <FaCircleCheck size={size} />
+    </span>
   );
 }
 
@@ -1019,6 +1201,7 @@ function DashboardView({
   onOpenConcept,
   onOpenUpload,
   onOpenSessions,
+  nowMs,
 }) {
   const dueConcepts = dashboard?.dueConcepts ?? [];
   const sessionRetentionOverview = dashboard?.sessionRetentionOverview ?? [];
@@ -1144,33 +1327,30 @@ function DashboardView({
                         ? `${Math.round(concept.retentionPct)}%`
                         : "New"
                   }
+                  icon={isMastered ? "tick" : null}
                 />
                 <div className="row-main">
                   <div className="row-title">{concept.title}</div>
                   <div className="row-meta">
                     {concept.category} ·{" "}
-                    {concept.subject ?? dueLabel(concept.nextReviewAt)}
+                    {concept.subject ?? dueLabel(concept.nextReviewAt, nowMs)}
                   </div>
+                  {concept.review_in_future === false &&
+                    concept.due_by_exam_priority && (
+                      <div className="row-meta" style={{ marginTop: 4 }}>
+                        Exam-priority review · based on retention and exam
+                        signal
+                      </div>
+                    )}
                   <div className="row-meta" style={{ marginTop: 4 }}>
                     {isMastered ? (
                       <>Mastered ✓ · Spaced reviews complete</>
                     ) : hasQuizAttempt ? (
-                      (() => {
-                        const sched = getSpacedReviewSchedule(
-                          concept.quizAttemptCount ?? 0,
-                        );
-                        return sched.intervalDays ? (
-                          <>
-                            Next review in {sched.intervalDays}{" "}
-                            {sched.intervalDays === 1 ? "day" : "days"}
-                          </>
-                        ) : (
-                          <>
-                            Retention {Math.round(concept.retentionPct)}% · Quiz
-                            again to boost retention.
-                          </>
-                        );
-                      })()
+                      <>
+                        {concept.isDueReview
+                          ? "Due Today"
+                          : dueLabel(concept.nextReviewAt, nowMs)}
+                      </>
                     ) : (
                       "New concept · Quiz once to estimate retention"
                     )}
@@ -1214,8 +1394,8 @@ function DashboardView({
                 Session retention uses the memory model, quiz coverage starts at
                 zero.
               </strong>
-              Bars show model retention only. Quiz attempted shows how much of
-              each session has been tested.
+              Bars show retention only. Quiz attempted shows how much of each
+              session has been tested.
             </div>
             <div className="stack">
               {sessionRetentionOverview.map((item) => (
@@ -1243,18 +1423,86 @@ function DashboardView({
   );
 }
 
-function UploadView({ onUpload, uploading, result, error }) {
+function UploadView({
+  onUpload,
+  uploading,
+  result,
+  error,
+  uploadQuota,
+  onLimitReached,
+}) {
   const [file, setFile] = useState(null);
   const [subject, setSubject] = useState("");
   const [drag, setDrag] = useState(false);
+  const [countdownSeconds, setCountdownSeconds] = useState(null);
+  const countdownRef = useRef(null);
+  const remainingToday = Number(uploadQuota?.remainingToday ?? -1);
+  const isQuotaExhausted = remainingToday === 0;
+  const isProcessing = uploading;
+
+  const guardFreeLimit = () => {
+    if (!isQuotaExhausted) return false;
+    onLimitReached?.();
+    return true;
+  };
+
+  useEffect(() => {
+    if (!uploading) {
+      if (countdownRef.current) {
+        window.clearInterval(countdownRef.current);
+        countdownRef.current = null;
+      }
+      return undefined;
+    }
+
+    if (countdownRef.current) {
+      window.clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+
+    countdownRef.current = window.setInterval(() => {
+      setCountdownSeconds((current) => {
+        if (current === null) return current;
+        if (current <= 1) return 1;
+        return current - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (countdownRef.current) {
+        window.clearInterval(countdownRef.current);
+        countdownRef.current = null;
+      }
+    };
+  }, [uploading]);
+
+  const startUpload = () => {
+    if (isProcessing) return;
+    if (guardFreeLimit()) return;
+    const subjectName = subject.trim();
+    if (!file || !subjectName) return;
+    setCountdownSeconds(estimateUploadSeconds(file));
+    onUpload(file, subjectName, setCountdownSeconds);
+  };
+
+  const uploadButtonLabel = isProcessing
+    ? `Processing • ${formatCountdown(countdownSeconds ?? estimateUploadSeconds(file))} left`
+    : "Analyze & Extract Concepts";
 
   return (
     <div>
       <div className="page-header">
-        <h1>Upload Study Notes</h1>
-        <div className="page-subtitle">
-          Upload a PDF or TXT file to automatically extract key concepts.
-          Subject or chapter name is required.
+        <div className="upload-header-row">
+          <div>
+            <h1>Upload Study Notes</h1>
+            <div className="page-subtitle">
+              Upload a PDF or TXT file to automatically extract key concepts.
+              Subject or chapter name is required.
+            </div>
+          </div>
+          <div className="upload-quota-pill">
+            Uploads remaining today: {uploadQuota?.remainingToday ?? "-"}
+          </div>
         </div>
       </div>
 
@@ -1288,16 +1536,26 @@ function UploadView({ onUpload, uploading, result, error }) {
         onDrop={(event) => {
           event.preventDefault();
           setDrag(false);
+          if (guardFreeLimit()) return;
           setFile(event.dataTransfer.files?.[0] ?? null);
         }}
-        onClick={() => document.getElementById("upload-input")?.click()}
+        onClick={() => {
+          if (guardFreeLimit()) return;
+          document.getElementById("upload-input")?.click();
+        }}
       >
         <input
           id="upload-input"
           type="file"
           accept=".pdf,.docx,.txt"
           hidden
-          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          onChange={(event) => {
+            if (guardFreeLimit()) {
+              event.target.value = "";
+              return;
+            }
+            setFile(event.target.files?.[0] ?? null);
+          }}
         />
         <div className="row-title">
           {file ? file.name : "Drop your notes here"}
@@ -1322,10 +1580,10 @@ function UploadView({ onUpload, uploading, result, error }) {
       <div style={{ marginTop: 14 }}>
         <button
           className="btn btn-primary"
-          onClick={() => onUpload(file, subject.trim())}
-          disabled={!file || !subject.trim() || uploading}
+          onClick={startUpload}
+          disabled={!file || !subject.trim() || isProcessing}
         >
-          {uploading ? "Uploading..." : "Analyze & Extract Concepts"}
+          {uploadButtonLabel}
         </button>
       </div>
     </div>
@@ -1492,7 +1750,8 @@ function SessionsView({
                               ? concept.retentionPct
                               : null
                         }
-                        label={isMastered ? "✓" : hasQuizAttempt ? null : "New"}
+                        label={hasQuizAttempt ? null : "New"}
+                        icon={isMastered ? "tick" : null}
                       />
                       <div className="row-main">
                         <div className="row-title">{concept.title}</div>
@@ -1541,6 +1800,7 @@ function LearnView({
   loading,
   onBack,
   onStartQuiz,
+  nowMs,
 }) {
   if (!concept)
     return (
@@ -1641,11 +1901,11 @@ function LearnView({
               <div className="muted" style={{ marginTop: 6 }}>
                 {isMastered
                   ? "Concept mastered — no active spaced reviews."
-                  : spacedSchedule.intervalDays
-                    ? `Next review in ${spacedSchedule.intervalDays} ${
-                        spacedSchedule.intervalDays === 1 ? "day" : "days"
-                      }.`
-                    : `Next review scheduled soon.`}
+                  : concept.nextReviewAt
+                    ? dueLabel(concept.nextReviewAt, nowMs)
+                    : spacedSchedule.intervalDays
+                      ? reviewTimingLabelFromDays(spacedSchedule.intervalDays)
+                      : "Due Today"}
               </div>
               <div style={{ marginTop: 14 }}>
                 <button className="btn btn-amber" onClick={onStartQuiz}>
@@ -1727,6 +1987,9 @@ function QuizView({
   concept,
   quiz,
   answers,
+  reviewFuture,
+  showReviewQuestion,
+  onReviewFutureChange,
   onAnswer,
   onBack,
   onSubmit,
@@ -1747,7 +2010,7 @@ function QuizView({
         </div>
         <h1>{concept.title} Quiz</h1>
         <div className="page-subtitle">
-          Answer these 5 MCQ's to get or boost your retention for this Concept.
+          Answer these 5 MCQs to get or boost your retention for this concept.
         </div>
       </div>
 
@@ -1806,6 +2069,38 @@ function QuizView({
         })}
       </div>
 
+      {showReviewQuestion && !concept.isDueReview && (
+        <div className="card" style={{ marginTop: 14 }}>
+          <div className="kicker">Future Review</div>
+          <div className="row-title" style={{ marginTop: 6 }}>
+            Do you want to review this concept in future?
+          </div>
+          <div
+            className="option-list"
+            style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}
+          >
+            <button
+              type="button"
+              className={`option ${reviewFuture === false ? "select" : ""}`}
+              onClick={() => onReviewFutureChange(false)}
+            >
+              X
+            </button>
+            <button
+              type="button"
+              className={`option ${reviewFuture === true ? "select" : ""}`}
+              onClick={() => onReviewFutureChange(true)}
+            >
+              ✓
+            </button>
+          </div>
+          <div className="muted" style={{ marginTop: 8 }}>
+            Tick keeps the concept in the normal spaced-review flow. X lets the
+            app decide based on retention and exam priority.
+          </div>
+        </div>
+      )}
+
       {result?.submitted ? (
         <div className="score-box">
           <div className="row-title">{result.message ?? "Quiz saved."}</div>
@@ -1836,7 +2131,7 @@ function QuizView({
                 padding: "10px 12px",
               }}
             >
-              <div className="stat-label">Model Retention</div>
+              <div className="stat-label">Estimated Retention</div>
               <div className="row-title">
                 {Number.isFinite(Number(result.retentionPct))
                   ? `${Math.round(Number(result.retentionPct))}%`
@@ -2259,13 +2554,13 @@ function ProfileView({ onUpdated }) {
             label: "Mastered",
             value: memory.mastered,
             color: "var(--teal)",
-            desc: "≥80% retention",
+            desc: "≥90% retention",
           },
           {
-            label: "Learning",
+            label: "Learned",
             value: memory.learning,
             color: "var(--amber)",
-            desc: "45–79%",
+            desc: "45–89%",
           },
           {
             label: "At Risk",
@@ -2766,9 +3061,22 @@ export default function DashboardPage() {
   const [transformCache, setTransformCache] = useState({});
   const [quiz, setQuiz] = useState(null);
   const [quizAnswers, setQuizAnswers] = useState({});
+  const [reviewFuture, setReviewFuture] = useState(null);
+  const [showReviewQuestion, setShowReviewQuestion] = useState(true);
   const [quizResult, setQuizResult] = useState(null);
   const [quizStartedAt, setQuizStartedAt] = useState(null);
   const [masteryMoment, setMasteryMoment] = useState(null);
+  const [premiumPopup, setPremiumPopup] = useState(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  const openUploadLimitPopup = () => {
+    setPremiumPopup({
+      title: "Daily upload limit reached",
+      message:
+        "You've used your 2 free uploads for today. Upgrade to Premium for unlimited uploads.",
+      price: PREMIUM_MONTHLY_PRICE,
+    });
+  };
   const transformRequestsRef = useRef(new Map());
   const [loading, setLoading] = useState({
     overview: true,
@@ -2795,6 +3103,13 @@ export default function DashboardPage() {
       // Ignore storage failures and keep the in-memory theme active.
     }
   }, [theme]);
+
+  useEffect(() => {
+    const updateNow = () => setNowMs(Date.now());
+    updateNow();
+    const intervalId = window.setInterval(updateNow, 60000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const toggleTheme = () => {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
@@ -2908,7 +3223,33 @@ export default function DashboardPage() {
       setLoading((current) => ({ ...current, quiz: true }));
       setQuiz(null);
       setQuizAnswers({});
+      setReviewFuture(null);
       setQuizResult(null);
+      // Decide whether to show the future-review prompt:
+      // - hide for spaced-review / due concepts
+      // - hide permanently if the latest attempt had review_in_future === true (user opted-in)
+      // - otherwise show and allow the user to choose (defaults to X if left unanswered)
+      // - hide for mastered concepts as well
+      const isDue = Boolean(activeConcept?.isDueReview);
+      const isMastered = Boolean(activeConcept?.isMastered);
+      const prevChoice =
+        activeConcept?.review_in_future ??
+        activeConcept?.reviewInFuture ??
+        null;
+      const latestReviewChoice =
+        activeConcept?.latestReviewInFuture ??
+        activeConcept?.latest_review_in_future ??
+        null;
+      if (
+        isDue ||
+        isMastered ||
+        prevChoice === true ||
+        latestReviewChoice === true
+      ) {
+        setShowReviewQuestion(false);
+      } else {
+        setShowReviewQuestion(true);
+      }
 
       try {
         const data = await fetchJson(
@@ -2977,6 +3318,7 @@ export default function DashboardPage() {
     );
     setQuiz(null);
     setQuizAnswers({});
+    setReviewFuture(null);
     setQuizResult(null);
     setScreen("learn");
     setSidebarOpen(false);
@@ -3007,7 +3349,7 @@ export default function DashboardPage() {
     }
   };
 
-  const handleUpload = async (file, subjectName) => {
+  const handleUpload = async (file, subjectName, setCountdownEstimate) => {
     if (!file || !subjectName) return;
 
     setLoading((current) => ({ ...current, upload: true }));
@@ -3016,6 +3358,13 @@ export default function DashboardPage() {
 
     try {
       const extractedText = await extractTextFromSelectedFile(file);
+      const chunkCount = Math.max(1, Math.ceil(extractedText.length / 3500));
+      setCountdownEstimate?.((current) =>
+        Math.max(
+          Number(current) || 0,
+          estimateUploadSecondsFromChunkCount(chunkCount),
+        ),
+      );
       const data = await fetchJson("/api/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3030,7 +3379,21 @@ export default function DashboardPage() {
       refreshData();
       setScreen("sessions");
     } catch (error) {
-      setUploadError(error.message);
+      // If the server returned a structured error (e.g. DAILY_LIMIT_REACHED),
+      // surface a specialised message and hint to upgrade.
+      if (error?.body?.code === "DAILY_LIMIT_REACHED") {
+        setUploadError("");
+        setNotice("");
+        setPremiumPopup({
+          title: "Daily upload limit reached",
+          message:
+            error.body?.error ??
+            "You've used your 2 free uploads for today. Upgrade to Premium for unlimited uploads.",
+          price: PREMIUM_MONTHLY_PRICE,
+        });
+      } else {
+        setUploadError(error.message);
+      }
     } finally {
       setLoading((current) => ({ ...current, upload: false }));
     }
@@ -3052,6 +3415,8 @@ export default function DashboardPage() {
 
   const submitQuiz = async () => {
     if (!quiz || !activeConcept) return;
+    // If the user didn't explicitly choose, treat as X (opt-out)
+    const reviewChoice = reviewFuture === null ? false : Boolean(reviewFuture);
 
     const questions = quiz.questions ?? [];
     const correctCount = questions.reduce(
@@ -3081,6 +3446,7 @@ export default function DashboardPage() {
           timeTakenMs,
           wasCorrect: score >= 50,
           bloomLevel: quiz.bloom_level ?? "remember",
+          reviewFuture: reviewChoice,
         }),
       });
 
@@ -3088,7 +3454,6 @@ export default function DashboardPage() {
       if (data.masteredMilestone) {
         setMasteryMoment(data.masteredMilestone);
       }
-      refreshData();
     } catch (error) {
       setNotice(error.message);
     } finally {
@@ -3105,6 +3470,76 @@ export default function DashboardPage() {
       )
     : false;
 
+  const backToLearnFromQuiz = () => {
+    if (quizResult && activeConcept) {
+      const mastered = Boolean(quizResult.masteredMilestone);
+      const updatedRetention = Number(
+        quizResult.estimatedRetentionPct ?? quizResult.retentionPct,
+      );
+      const updatedNextReviewAt =
+        quizResult.nextReviewDate ??
+        quizResult.schedule?.next_review_date ??
+        quizResult.schedule?.nextReviewDate ??
+        null;
+      setActiveConcept((current) =>
+        current
+          ? {
+              ...current,
+              retentionPct: Number.isFinite(updatedRetention)
+                ? updatedRetention
+                : current.retentionPct,
+              retention_pct: Number.isFinite(updatedRetention)
+                ? updatedRetention
+                : current.retention_pct,
+              quizAttemptCount: Number(current.quizAttemptCount ?? 0) + 1,
+              quiz_attempt_count: Number(current.quiz_attempt_count ?? 0) + 1,
+              nextReviewAt: updatedNextReviewAt ?? current.nextReviewAt,
+              next_review_at: updatedNextReviewAt ?? current.next_review_at,
+              review_in_future:
+                quizResult.reviewFuture ?? current.review_in_future,
+              reviewInFuture: quizResult.reviewFuture ?? current.reviewInFuture,
+              isMastered: mastered || current.isMastered,
+              isDueReview: mastered ? false : current.isDueReview,
+              is_due_review: mastered ? false : current.is_due_review,
+            }
+          : current,
+      );
+
+      setSessionConcepts((current) =>
+        current.map((concept) =>
+          String(concept?.id ?? "") === String(activeConcept.id ?? "")
+            ? {
+                ...concept,
+                retentionPct: Number.isFinite(updatedRetention)
+                  ? updatedRetention
+                  : concept.retentionPct,
+                retention_pct: Number.isFinite(updatedRetention)
+                  ? updatedRetention
+                  : concept.retention_pct,
+                quizAttemptCount: Number(concept.quizAttemptCount ?? 0) + 1,
+                quiz_attempt_count: Number(concept.quiz_attempt_count ?? 0) + 1,
+                nextReviewAt: updatedNextReviewAt ?? concept.nextReviewAt,
+                next_review_at: updatedNextReviewAt ?? concept.next_review_at,
+                review_in_future:
+                  quizResult.reviewFuture ?? concept.review_in_future,
+                reviewInFuture:
+                  quizResult.reviewFuture ?? concept.reviewInFuture,
+                isMastered: mastered || concept.isMastered,
+                is_mastered: mastered || concept.is_mastered,
+              }
+            : concept,
+        ),
+      );
+    }
+    refreshData();
+    setScreen("learn");
+  };
+
+  const backToSessionsFromLearn = () => {
+    refreshData();
+    setScreen("sessions");
+  };
+
   return (
     <>
       <style>{STYLE}</style>
@@ -3112,85 +3547,114 @@ export default function DashboardPage() {
         baseColor={theme === "dark" ? "#1a1714" : "#e9e4d9"}
         highlightColor={theme === "dark" ? "#2b2723" : "#f6f1e6"}
       >
+        {premiumPopup && (
+          <div className="modal-overlay" onClick={() => setPremiumPopup(null)}>
+            <div
+              className="card premium-modal"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="premium-crown" aria-hidden="true">
+                👑
+              </div>
+              <div className="kicker">Premium</div>
+              <h3 style={{ margin: "8px 0 8px", fontFamily: "Lora, serif" }}>
+                {premiumPopup.title}
+              </h3>
+              <div className="muted" style={{ lineHeight: 1.7 }}>
+                {premiumPopup.message}
+              </div>
+              <div style={{ marginTop: 10, fontWeight: 700 }}>
+                Premium plan: {premiumPopup.price}
+              </div>
+              <div className="premium-actions">
+                <button
+                  className="btn btn-amber"
+                  onClick={() =>
+                    window.open(
+                      PAYMENT_GATEWAY_URL,
+                      "_blank",
+                      "noopener,noreferrer",
+                    )
+                  }
+                >
+                  👑 Upgrade to Premium
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setPremiumPopup(null)}
+                >
+                  Maybe later
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {masteryMoment && (
           <div
             style={{
               position: "fixed",
               inset: 0,
               zIndex: 1200,
-              background: "rgba(0,0,0,0.62)",
+              background: "rgba(0,0,0,0.65)",
+              backdropFilter: "blur(6px)",
               display: "grid",
               placeItems: "center",
               padding: 20,
+              animation: "fadeIn 0.25s ease",
             }}
             onClick={() => setMasteryMoment(null)}
           >
             <div
               className="card"
+              onClick={(event) => event.stopPropagation()}
               style={{
                 position: "relative",
                 maxWidth: 420,
                 width: "100%",
+                padding: "36px 28px",
+                borderRadius: 24,
                 textAlign: "center",
-                padding: "28px 24px",
-                borderColor: "rgba(240,170,58,0.34)",
-                boxShadow: "0 30px 90px rgba(0,0,0,0.5)",
+                background: "var(--panel-strong)",
+                border: "1px solid rgba(34,197,94,0.22)",
+                boxShadow: "0 30px 100px rgba(0,0,0,0.55)",
+                animation: "masteryPop 0.45s cubic-bezier(.17,.89,.32,1.25)",
               }}
-              onClick={(event) => event.stopPropagation()}
             >
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  overflow: "hidden",
-                  pointerEvents: "none",
-                  borderRadius: 20,
-                }}
-              >
-                {Array.from({ length: 12 }).map((_, index) => (
-                  <span
-                    key={index}
-                    style={{
-                      position: "absolute",
-                      left: `${10 + index * 7}%`,
-                      top: `${8 + (index % 4) * 12}%`,
-                      width: 8,
-                      height: 8,
-                      borderRadius: 999,
-                      background:
-                        index % 3 === 0
-                          ? "var(--amber)"
-                          : index % 3 === 1
-                            ? "var(--teal)"
-                            : "var(--rose)",
-                      opacity: 0.9,
-                      transform: `rotate(${index * 18}deg)`,
-                      animation: `floatConfetti 1.6s ease-in-out infinite`,
-                      animationDelay: `${index * 0.08}s`,
-                    }}
-                  />
-                ))}
-              </div>
-              <div className="kicker" style={{ fontSize: 12 }}>
-                Mastered
+              <div className="mastery-success-icon">
+                <FaCircleCheck size={46} aria-hidden="true" />
               </div>
               <div
                 style={{
-                  marginTop: 10,
+                  marginTop: 24,
                   fontFamily: "Lora, serif",
                   fontSize: 34,
                   fontWeight: 600,
                   letterSpacing: "-0.04em",
+                  color: "var(--text)",
                 }}
               >
-                {masteryMoment.title} — Mastered ✓
+                {masteryMoment.title}
               </div>
-              <div className="muted" style={{ marginTop: 10, lineHeight: 1.7 }}>
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 18,
+                  fontWeight: 500,
+                  color: "var(--teal)",
+                }}
+              >
+                Mastered
+              </div>
+              <div className="muted" style={{ marginTop: 14, lineHeight: 1.7 }}>
                 3 successful reviews reached. Screenshot this and share it.
               </div>
               <button
                 className="btn btn-amber"
-                style={{ marginTop: 18 }}
+                style={{
+                  marginTop: 26,
+                  width: "100%",
+                  justifyContent: "center",
+                }}
                 onClick={() => setMasteryMoment(null)}
               >
                 Nice
@@ -3241,6 +3705,7 @@ export default function DashboardPage() {
                 onOpenConcept={openConcept}
                 onOpenUpload={() => setScreen("upload")}
                 onOpenSessions={() => setScreen("sessions")}
+                nowMs={nowMs}
               />
             )}
             {screen === "profile" && <ProfileView onUpdated={refreshData} />}
@@ -3250,6 +3715,8 @@ export default function DashboardPage() {
                 uploading={loading.upload}
                 result={uploadResult}
                 error={uploadError}
+                uploadQuota={dashboard?.uploadQuota}
+                onLimitReached={openUploadLimitPopup}
               />
             )}
             {screen === "sessions" && (
@@ -3271,8 +3738,9 @@ export default function DashboardPage() {
                 learningStyle={dashboard?.profile?.learning_style}
                 transform={currentTransform}
                 loading={loading.transform}
-                onBack={() => setScreen("sessions")}
+                onBack={backToSessionsFromLearn}
                 onStartQuiz={() => setScreen("quiz")}
+                nowMs={nowMs}
               />
             )}
             {screen === "quiz" && (
@@ -3280,10 +3748,17 @@ export default function DashboardPage() {
                 concept={activeConcept}
                 quiz={quiz}
                 answers={quizAnswers}
+                reviewFuture={reviewFuture}
+                showReviewQuestion={showReviewQuestion}
+                onReviewFutureChange={(val) => {
+                  setReviewFuture(val);
+                  // hide the question immediately after selection for this quiz
+                  setShowReviewQuestion(false);
+                }}
                 onAnswer={(id, value) =>
                   setQuizAnswers((current) => ({ ...current, [id]: value }))
                 }
-                onBack={() => setScreen("learn")}
+                onBack={backToLearnFromQuiz}
                 onSubmit={submitQuiz}
                 submitting={loading.submit}
                 result={quizResult}

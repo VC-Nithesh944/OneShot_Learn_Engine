@@ -55,7 +55,9 @@ export async function GET(request, { params }) {
   const { data: attempts, error: attemptsError } = conceptIds.length
     ? await supabase
         .from("quiz_attempts")
-        .select("concept_id, attempted_at")
+        .select(
+          "concept_id, attempted_at, estimated_retention_pct, review_in_future",
+        )
         .eq("user_id", userId)
         .order("attempted_at", { ascending: false })
         .in("concept_id", conceptIds)
@@ -69,6 +71,8 @@ export async function GET(request, { params }) {
   );
   const latestAttemptByConceptId = new Map();
   const attemptCountByConceptId = new Map();
+  const latestRetentionByConceptId = new Map();
+  const latestReviewFutureByConceptId = new Map();
   for (const attempt of attempts ?? []) {
     attemptCountByConceptId.set(
       attempt.concept_id,
@@ -77,12 +81,32 @@ export async function GET(request, { params }) {
     if (!latestAttemptByConceptId.has(attempt.concept_id)) {
       latestAttemptByConceptId.set(attempt.concept_id, attempt.attempted_at);
     }
+    if (!latestRetentionByConceptId.has(attempt.concept_id)) {
+      const attemptRetention = Number(attempt.estimated_retention_pct);
+      if (Number.isFinite(attemptRetention)) {
+        latestRetentionByConceptId.set(attempt.concept_id, attemptRetention);
+      }
+    }
+    if (!latestReviewFutureByConceptId.has(attempt.concept_id)) {
+      latestReviewFutureByConceptId.set(
+        attempt.concept_id,
+        Boolean(attempt.review_in_future),
+      );
+    }
   }
   const concepts = (data ?? []).map((concept) => ({
     ...concept,
+    retention_pct: Number.isFinite(latestRetentionByConceptId.get(concept.id))
+      ? latestRetentionByConceptId.get(concept.id)
+      : concept.retention_pct,
+    retentionPct: Number.isFinite(latestRetentionByConceptId.get(concept.id))
+      ? latestRetentionByConceptId.get(concept.id)
+      : concept.retention_pct,
     has_quiz_attempt: attemptedConceptIds.has(concept.id),
     quiz_attempt_count: attemptCountByConceptId.get(concept.id) ?? 0,
     is_mastered: (attemptCountByConceptId.get(concept.id) ?? 0) >= 4,
+    review_in_future: latestReviewFutureByConceptId.get(concept.id),
+    reviewInFuture: latestReviewFutureByConceptId.get(concept.id),
     last_quiz_at: latestAttemptByConceptId.get(concept.id) ?? null,
   }));
 

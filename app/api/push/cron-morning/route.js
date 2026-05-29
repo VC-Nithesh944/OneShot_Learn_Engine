@@ -35,15 +35,44 @@ export async function GET(request) {
         admin.rpc("get_due_concepts_for_user", { p_user_id: userId }),
         admin
           .from("concepts")
-          .select("id, title, retention_pct, user_id")
+          .select("id, title, user_id")
           .eq("user_id", userId)
-          .lt("retention_pct", 40)
-          .order("retention_pct", { ascending: true })
           .limit(3),
       ]);
 
+      const { data: attempts } = await admin
+        .from("quiz_attempts")
+        .select("concept_id, estimated_retention_pct, attempted_at")
+        .eq("user_id", userId)
+        .order("attempted_at", { ascending: false });
+
+      const latestRetentionByConcept = new Map();
+      for (const attempt of attempts ?? []) {
+        if (!latestRetentionByConcept.has(attempt.concept_id)) {
+          const value = Number(attempt.estimated_retention_pct);
+          if (Number.isFinite(value)) {
+            latestRetentionByConcept.set(attempt.concept_id, value);
+          }
+        }
+      }
+
+      const fadingConcepts = (conceptsRes.data ?? [])
+        .map((concept) => ({
+          ...concept,
+          retention_pct: latestRetentionByConcept.get(concept.id),
+        }))
+        .filter(
+          (concept) =>
+            Number.isFinite(Number(concept.retention_pct)) &&
+            Number(concept.retention_pct) < 40,
+        )
+        .sort(
+          (left, right) =>
+            Number(left.retention_pct) - Number(right.retention_pct),
+        )
+        .slice(0, 3);
+
       const dueConcepts = dueRes.data ?? [];
-      const fadingConcepts = conceptsRes.data ?? [];
 
       if (dueConcepts.length === 0 && fadingConcepts.length === 0) {
         skipped += 1;

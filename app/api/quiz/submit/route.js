@@ -12,6 +12,72 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function calculateEstimatedRetention({
+  score,
+  qualityRating,
+  timeTakenMs,
+  attemptCount,
+  reviewFuture,
+  examProbability,
+}) {
+  const accuracy = clamp(Number(score) || 0, 0, 100) / 100;
+  const avgSecondsPerQuestion =
+    Number(timeTakenMs) > 0 ? Number(timeTakenMs) / 5 / 1000 : 0;
+
+  const paceFactor =
+    avgSecondsPerQuestion <= 12
+      ? 1.05
+      : avgSecondsPerQuestion <= 20
+        ? 1.02
+        : avgSecondsPerQuestion <= 35
+          ? 0.97
+          : 0.9;
+
+  const qualityFactor =
+    qualityRating >= 5
+      ? 1.08
+      : qualityRating >= 4
+        ? 1.04
+        : qualityRating >= 3
+          ? 1
+          : qualityRating >= 2
+            ? 0.93
+            : 0.86;
+
+  const repetitionFactor =
+    attemptCount >= 5
+      ? 1.08
+      : attemptCount >= 3
+        ? 1.05
+        : attemptCount >= 2
+          ? 1.02
+          : 0.98;
+
+  const examFactor =
+    examProbability >= 5
+      ? 1.06
+      : examProbability >= 4
+        ? 1.03
+        : examProbability >= 3
+          ? 1.01
+          : 0.98;
+
+  const intentFactor = reviewFuture ? 1.03 : 0.97;
+
+  const blended =
+    (18 + accuracy * 48) *
+    paceFactor *
+    qualityFactor *
+    repetitionFactor *
+    examFactor *
+    intentFactor;
+  return Math.round(clamp(blended, 12, 98));
+}
+
 function computeSimpleNextReview(score, qualityRating) {
   const days =
     qualityRating >= 5
@@ -45,6 +111,7 @@ export async function POST(request) {
     wasCorrect,
     bloomLevel = "remember",
     sessionId = null,
+    reviewFuture = false,
   } = body;
 
   if (!conceptId || score === undefined || qualityRating === undefined) {
@@ -58,17 +125,22 @@ export async function POST(request) {
   const admin = createAdminClient();
 
   // ── 1. Save the quiz attempt (immutable insert)
-  const { error: attemptErr } = await admin.from("quiz_attempts").insert({
-    concept_id: conceptId,
-    user_id: userId,
-    session_id: sessionId,
-    quiz_type: "mcq",
-    bloom_level: bloomLevel,
-    score: Math.round(score),
-    quality_rating: qualityRating,
-    time_taken_ms: timeTakenMs,
-    was_correct: wasCorrect,
-  });
+  const { data: attemptRow, error: attemptErr } = await admin
+    .from("quiz_attempts")
+    .insert({
+      concept_id: conceptId,
+      user_id: userId,
+      session_id: sessionId,
+      quiz_type: "mcq",
+      bloom_level: bloomLevel,
+      score: Math.round(score),
+      quality_rating: qualityRating,
+      time_taken_ms: timeTakenMs,
+      was_correct: wasCorrect,
+      review_in_future: Boolean(reviewFuture),
+    })
+    .select("id")
+    .single();
 
   if (attemptErr)
     return NextResponse.json({ error: attemptErr.message }, { status: 500 });
@@ -165,15 +237,38 @@ export async function POST(request) {
     .eq("concept_id", conceptId)
     .eq("user_id", userId);
 
+  const { data: conceptRow } = await admin
+    .from("concepts")
+    .select("title, exam_probability")
+    .eq("id", conceptId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const estimatedRetentionPct = calculateEstimatedRetention({
+    score,
+    qualityRating,
+    timeTakenMs,
+    attemptCount: quizAttemptCount ?? 0,
+    reviewFuture: Boolean(reviewFuture),
+    examProbability: Number(conceptRow?.exam_probability ?? 3),
+  });
+
+  if (attemptRow?.id) {
+    const { error: attemptUpdateError } = await admin
+      .from("quiz_attempts")
+      .update({ estimated_retention_pct: estimatedRetentionPct })
+      .eq("id", attemptRow.id);
+
+    if (attemptUpdateError) {
+      console.error(
+        "[quiz/submit] attempt retention update failed:",
+        attemptUpdateError.message,
+      );
+    }
+  }
+
   let masteredMilestone = null;
   if ((quizAttemptCount ?? 0) >= 4 && !smResult.failed) {
-    const { data: conceptRow } = await admin
-      .from("concepts")
-      .select("title")
-      .eq("id", conceptId)
-      .eq("user_id", userId)
-      .maybeSingle();
-
     masteredMilestone = {
       conceptId,
       title: conceptRow?.title ?? "Concept",
@@ -181,15 +276,18 @@ export async function POST(request) {
     };
   }
 
-  // concepts.retention_pct and next_review_at are synced by the review_schedule trigger.
+  // estimated_retention_pct is persisted on quiz_attempts.
+  // concepts.next_review_at remains synced by the review_schedule trigger.
   return NextResponse.json({
     success: true,
     schedule: smResult,
     nextReviewDate: smResult.next_review_date ?? smResult.nextReviewDate,
-    retentionPct: smResult.retention_pct,
+    retentionPct: estimatedRetentionPct,
+    estimatedRetentionPct,
     masteredMilestone,
+    reviewFuture: Boolean(reviewFuture),
     message: masteredMilestone
       ? "Concept mastered - you can keep practicing anytime."
-      : `Next review in ${smResult.interval_days ?? smResult.intervalDays ?? 1} day(s). Retention: ${smResult.retention_pct}%`,
+      : `Next review in ${smResult.interval_days ?? smResult.intervalDays ?? 1} day(s). Estimated retention: ${estimatedRetentionPct}%`,
   });
 }
