@@ -15,6 +15,12 @@ function AuthCta({ className, children, signedOutHref, style }) {
   );
 }
 
+function withPostAuthRedirect(pathname) {
+  const url = new URL(pathname, "http://localhost");
+  url.searchParams.set("redirect_url", "/dashboard");
+  return `${url.pathname}?${url.searchParams.toString()}`;
+}
+
 // ─── Forgetting Curve Canvas Animation ────────────────────────
 function ForgettingCurve() {
   const canvasRef = useRef(null);
@@ -653,10 +659,16 @@ export default function LandingPage() {
           <span>O</span>neShot
         </a>
         <div className="nav-links">
-          <AuthCta signedOutHref="/sign-in" className="btn-ghost">
+          <AuthCta
+            signedOutHref={withPostAuthRedirect("/sign-in")}
+            className="btn-ghost"
+          >
             Sign in
           </AuthCta>
-          <AuthCta signedOutHref="/sign-up" className="btn-amber">
+          <AuthCta
+            signedOutHref={withPostAuthRedirect("/sign-up")}
+            className="btn-amber"
+          >
             Get started
           </AuthCta>
         </div>
@@ -690,10 +702,16 @@ export default function LandingPage() {
               </p>
 
               <div className="hero-ctas fade-up fade-up-4">
-                <AuthCta signedOutHref="/sign-up" className="btn-primary-lg">
+                <AuthCta
+                  signedOutHref={withPostAuthRedirect("/sign-up")}
+                  className="btn-primary-lg"
+                >
                   Start remembering — it's free
                 </AuthCta>
-                <AuthCta signedOutHref="/sign-in" className="btn-outline">
+                <AuthCta
+                  signedOutHref={withPostAuthRedirect("/sign-in")}
+                  className="btn-outline"
+                >
                   Sign in
                 </AuthCta>
               </div>
@@ -789,10 +807,10 @@ export default function LandingPage() {
             <em>Some Concepts Don't Stick. Here's why.</em>
           </h2>
           <p className="section-lead">
-            Your brain isn't broken. Some Concepts are naturally story-like, causal,
-            and human-scale. Whereas Some Concepts are invisible, layered,
-            and have zero sensory grounding. The encoding problem is real — and
-            it's solvable.
+            Your brain isn't broken. Some Concepts are naturally story-like,
+            causal, and human-scale. Whereas Some Concepts are invisible,
+            layered, and have zero sensory grounding. The encoding problem is
+            real — and it's solvable.
           </p>
 
           {/* Science backing */}
@@ -997,11 +1015,14 @@ export default function LandingPage() {
             </p>
           </div>
           <div className="cta-right">
-            <AuthCta signedOutHref="/sign-up" className="btn-primary-lg">
+            <AuthCta
+              signedOutHref={withPostAuthRedirect("/sign-up")}
+              className="btn-primary-lg"
+            >
               Create free account →
             </AuthCta>
             <AuthCta
-              signedOutHref="/sign-in"
+              signedOutHref={withPostAuthRedirect("/sign-in")}
               className="btn-outline"
               style={{
                 textAlign: "center",
