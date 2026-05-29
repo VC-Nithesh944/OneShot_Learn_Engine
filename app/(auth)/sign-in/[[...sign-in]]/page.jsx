@@ -2,11 +2,22 @@ import { SignIn } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
-export default function SignInPage() {
+function getRedirectUrl(searchParams) {
+  const redirectUrl = searchParams?.redirect_url;
+
+  if (typeof redirectUrl === "string" && redirectUrl.startsWith("/")) {
+    return redirectUrl;
+  }
+
+  return "/dashboard";
+}
+
+export default async function SignInPage({ searchParams }) {
   const { userId } = auth();
+  const redirectUrl = getRedirectUrl(await searchParams);
 
   if (userId) {
-    redirect("/dashboard");
+    redirect(redirectUrl);
   }
 
   return (
@@ -20,8 +31,8 @@ export default function SignInPage() {
       }}
     >
       <SignIn
-        forceRedirectUrl="/dashboard"
-        fallbackRedirectUrl="/dashboard"
+        forceRedirectUrl={redirectUrl}
+        fallbackRedirectUrl={redirectUrl}
         signUpUrl="/sign-up"
       />
     </div>
