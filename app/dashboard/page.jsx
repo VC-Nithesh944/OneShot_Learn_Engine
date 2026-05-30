@@ -2866,8 +2866,7 @@ export default function DashboardPage() {
         setNotice("");
         setPremiumPopup({
           title: "Daily upload limit reached",
-          message:
-            error.body?.error ?? dailyUploadLimitMessage,
+          message: error.body?.error ?? dailyUploadLimitMessage,
           price: premiumMonthlyPrice,
         });
       } else {
