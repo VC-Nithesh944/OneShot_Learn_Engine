@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { addIstDays, getIstDateKey } from "@/lib/istDate";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 function buildProfileResponse(profile, concepts, attempts, sessions) {
@@ -30,10 +31,14 @@ function buildProfileResponse(profile, concepts, attempts, sessions) {
       continue;
     }
 
-    const pct = attempt.score ?? 0;
     if (attemptCount >= 4) mastered += 1;
-    else if (pct >= 45) learning += 1;
-    else atRisk += 1;
+    else {
+      const retentionPct = Number(
+        attempt.estimated_retention_pct ?? attempt.score ?? 0,
+      );
+      if (Number.isFinite(retentionPct) && retentionPct <= 60) atRisk += 1;
+      else learning += 1;
+    }
   }
 
   const totalAttempts = attempts.length;
@@ -44,13 +49,14 @@ function buildProfileResponse(profile, concepts, attempts, sessions) {
   const today = new Date();
   const heatmap = {};
   for (let dayOffset = 0; dayOffset < 30; dayOffset += 1) {
-    const date = new Date(today);
-    date.setDate(date.getDate() - dayOffset);
-    heatmap[date.toISOString().slice(0, 10)] = 0;
+    const dateKey = getIstDateKey(addIstDays(today, -dayOffset));
+    heatmap[dateKey] = 0;
   }
 
   for (const attempt of attempts) {
-    const day = attempt.attempted_at?.slice(0, 10);
+    const day = attempt.attempted_at
+      ? getIstDateKey(attempt.attempted_at)
+      : null;
     if (day && day in heatmap) heatmap[day] += 1;
   }
 
@@ -275,7 +281,9 @@ export async function GET() {
 
       supabase
         .from("quiz_attempts")
-        .select("concept_id, score, quality_rating, was_correct, attempted_at")
+        .select(
+          "concept_id, score, quality_rating, was_correct, attempted_at, estimated_retention_pct",
+        )
         .eq("user_id", userId)
         .order("attempted_at", { ascending: false }),
 

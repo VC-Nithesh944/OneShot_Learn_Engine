@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { startOfIstDay } from "@/lib/istDate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendPushToUserSubscriptions } from "@/lib/pushNotifications";
 
@@ -29,8 +30,7 @@ export async function GET(request) {
   let skipped = 0;
   let failed = 0;
 
-  const todayStart = new Date();
-  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayStart = startOfIstDay();
   const todayIso = todayStart.toISOString();
 
   for (const userId of userIds) {

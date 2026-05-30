@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Skeleton from "react-loading-skeleton";
 
 import {
@@ -36,20 +37,6 @@ function SessionsSkeleton() {
       </div>
 
       <div className="section-title">Concepts in session</div>
-      <div className="card">
-        <div className="kicker">Exam summary</div>
-        <Skeleton height={20} width="46%" />
-        <div style={{ marginTop: 14 }} className="exam-summary-grid">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div className="exam-summary-item" key={index}>
-              <Skeleton height={16} width="58%" />
-              <div style={{ marginTop: 8 }}>
-                <Skeleton height={12} count={2} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
 
       <div className="stack" style={{ marginTop: 12 }}>
         {Array.from({ length: 4 }).map((_, index) => (
@@ -78,9 +65,22 @@ export default function SessionsView({
   onSelectSession,
   onOpenConcept,
 }) {
+  const pageSize = 5;
   const examSummary = normalizeExamSummary(
     selectedSession?.exam_summary ?? selectedSession?.examSummary,
   );
+  const [conceptPage, setConceptPage] = useState(1);
+
+  useEffect(() => {
+    setConceptPage(1);
+  }, [selectedSession?.id, concepts.length]);
+
+  const totalConceptPages = Math.max(1, Math.ceil(concepts.length / pageSize));
+  const safeConceptPage = Math.min(conceptPage, totalConceptPages);
+  const pagedConcepts = useMemo(() => {
+    const startIndex = (safeConceptPage - 1) * pageSize;
+    return concepts.slice(startIndex, startIndex + pageSize);
+  }, [concepts, safeConceptPage]);
 
   return (
     <div>
@@ -211,7 +211,7 @@ export default function SessionsView({
                   </div>
                 </div>
               ) : (
-                concepts.map((raw) => {
+                pagedConcepts.map((raw) => {
                   const concept = normalizeConcept(raw);
                   const hasQuizAttempt = Boolean(concept.hasQuizAttempt);
                   const isMastered = Boolean(concept.isMastered);
@@ -262,6 +262,55 @@ export default function SessionsView({
                   );
                 })
               )}
+            </div>
+          )}
+          {concepts.length > pageSize && (
+            <div
+              className="card"
+              style={{
+                marginTop: 12,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
+              <div className="muted">
+                Showing{" "}
+                {Math.min(
+                  (safeConceptPage - 1) * pageSize + 1,
+                  concepts.length,
+                )}
+                -{Math.min(safeConceptPage * pageSize, concepts.length)} of{" "}
+                {concepts.length}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {safeConceptPage > 1 && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() =>
+                      setConceptPage((current) => Math.max(1, current - 1))
+                    }
+                  >
+                    Prev
+                  </button>
+                )}
+                {safeConceptPage < totalConceptPages && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() =>
+                      setConceptPage((current) =>
+                        Math.min(totalConceptPages, current + 1),
+                      )
+                    }
+                  >
+                    Next
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </>

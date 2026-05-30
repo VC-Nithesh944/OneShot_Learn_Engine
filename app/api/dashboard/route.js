@@ -5,26 +5,9 @@
 // ============================================================
 import { auth } from "@clerk/nextjs/server";
 import { FREE_DAILY_UPLOAD_LIMIT } from "@/lib/constants";
+import { addIstDays, startOfIstDay } from "@/lib/istDate";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-
-function shouldSurfaceExamPriority(concept) {
-  const retentionValue = Number(
-    concept?.retention_pct ?? concept?.retentionPct ?? 0,
-  );
-  const examProbability = Number(
-    concept?.exam_probability ?? concept?.examProbability ?? 0,
-  );
-  const examSummary = String(
-    concept?.session_exam_summary ?? concept?.exam_summary ?? "",
-  ).toLowerCase();
-
-  if (retentionValue <= 70) return true;
-  if (examProbability >= 4) return true;
-  return /compare|difference|process|steps|architecture|formula|algorithm|advantage|disadvantage|vs\.?/.test(
-    examSummary,
-  );
-}
 
 export async function GET() {
   const { userId } = await auth();
@@ -32,15 +15,13 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const supabase = await createServerSupabaseClient();
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const tomorrowStart = new Date(todayStart);
-  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const todayStart = startOfIstDay();
+  const tomorrowStart = addIstDays(todayStart, 1);
 
   // Run all queries in parallel for speed
   const [
     profileRes,
-    dueRes,
+    conceptsRes,
     sessionsRes,
     sessionsCountRes,
     attemptsRes,
@@ -54,8 +35,13 @@ export async function GET() {
       .eq("clerk_user_id", userId)
       .single(),
 
-    // Due concepts via our helper function
-    supabase.rpc("get_due_concepts_for_user", { p_user_id: userId }),
+    // All concepts for the user; due state is derived from latest attempts.
+    supabase
+      .from("concepts")
+      .select(
+        "id, title, session_id, complexity, category, keywords, base_explanation, why_forgettable, exam_question, comparison_pair, retention_pct, exam_probability, next_review_at",
+      )
+      .eq("user_id", userId),
 
     // All processed sessions for session-level retention overview
     supabase
@@ -89,6 +75,7 @@ export async function GET() {
   ]);
 
   const profile = profileRes.data;
+  const concepts = conceptsRes.data ?? [];
   const sessions = sessionsRes.data ?? [];
   const sessionsCount = sessionsCountRes.count ?? 0;
   const attempts = attemptsRes.data ?? [];
@@ -130,57 +117,102 @@ export async function GET() {
     if (session?.id) sessionsById.set(session.id, session);
   }
 
-  const dueConcepts = (dueRes.data ?? []).map((concept) => {
-    const conceptId = concept?.id ?? concept?.concept_id ?? concept?.conceptId;
-    const attemptCount = attemptCountByConcept.get(conceptId) ?? 0;
-    const latestAttempt = conceptId
-      ? latestAttemptByConcept.get(conceptId)
-      : null;
-    const session = concept?.session_id
-      ? sessionsById.get(concept.session_id)
-      : null;
-    const reviewInFuture = latestAttempt?.review_in_future;
-    const examPriorityDue =
-      reviewInFuture === false
-        ? shouldSurfaceExamPriority({
-            ...concept,
-            session_exam_summary: session?.exam_summary ?? null,
-          })
-        : true;
-    return {
-      ...concept,
-      review_in_future: reviewInFuture,
-      session_exam_summary: session?.exam_summary ?? null,
-      has_quiz_attempt: Boolean(
-        conceptId ? latestAttemptByConcept.has(conceptId) : false,
-      ),
-      quiz_attempt_count: attemptCount,
-      is_mastered: attemptCount >= 4,
-      due_by_exam_priority: reviewInFuture === false ? examPriorityDue : false,
-      last_quiz_at:
-        conceptId && latestAttemptByConcept.has(conceptId)
-          ? latestAttemptByConcept.get(conceptId).attempted_at
+  const dueConcepts = concepts
+    .map((concept) => {
+      const conceptId =
+        concept?.id ?? concept?.concept_id ?? concept?.conceptId;
+      const attemptCount = attemptCountByConcept.get(conceptId) ?? 0;
+      const latestAttempt = conceptId
+        ? latestAttemptByConcept.get(conceptId)
+        : null;
+      const latestRetentionPct = Number(latestAttempt?.estimated_retention_pct);
+      const latestNextReviewAt = latestAttempt?.next_review_at ?? null;
+      const reviewInFuture = latestAttempt?.review_in_future;
+      return {
+        ...concept,
+        retention_pct: Number.isFinite(latestRetentionPct)
+          ? latestRetentionPct
           : null,
-    };
-  });
+        retentionPct: Number.isFinite(latestRetentionPct)
+          ? latestRetentionPct
+          : null,
+        estimated_retention_pct: Number.isFinite(latestRetentionPct)
+          ? latestRetentionPct
+          : null,
+        estimatedRetentionPct: Number.isFinite(latestRetentionPct)
+          ? latestRetentionPct
+          : null,
+        review_in_future: reviewInFuture,
+        reviewInFuture,
+        has_quiz_attempt: Boolean(
+          conceptId ? latestAttemptByConcept.has(conceptId) : false,
+        ),
+        quiz_attempt_count: attemptCount,
+        is_mastered: attemptCount >= 4,
+        last_quiz_at:
+          conceptId && latestAttemptByConcept.has(conceptId)
+            ? latestAttemptByConcept.get(conceptId).attempted_at
+            : null,
+        next_review_at: latestNextReviewAt,
+        nextReviewAt: latestNextReviewAt,
+      };
+    })
+    .filter((concept) => concept.has_quiz_attempt && !concept.is_mastered);
 
-  const reviewedDueConcepts = dueConcepts.filter(
-    (concept) =>
-      concept.has_quiz_attempt &&
-      !concept.is_mastered &&
-      (concept.review_in_future !== false || concept.due_by_exam_priority),
-  );
+  const dueTodayConcepts = dueConcepts
+    .filter((concept) => {
+      const nextReviewAt = concept?.next_review_at ?? concept?.nextReviewAt;
+      if (!nextReviewAt) return false;
+      const nextReviewTime = new Date(nextReviewAt).getTime();
+      if (!Number.isFinite(nextReviewTime)) return false;
+      return (
+        nextReviewTime >= todayStart.getTime() &&
+        nextReviewTime < tomorrowStart.getTime()
+      );
+    })
+    .sort((left, right) => {
+      const leftRetention = Number.isFinite(left.estimatedRetentionPct)
+        ? Number(left.estimatedRetentionPct)
+        : Number.isFinite(left.estimated_retention_pct)
+          ? Number(left.estimated_retention_pct)
+          : Number(left.retentionPct ?? left.retention_pct ?? 101);
+      const rightRetention = Number.isFinite(right.estimatedRetentionPct)
+        ? Number(right.estimatedRetentionPct)
+        : Number.isFinite(right.estimated_retention_pct)
+          ? Number(right.estimated_retention_pct)
+          : Number(right.retentionPct ?? right.retention_pct ?? 101);
 
-  const todayEnd = new Date(todayStart);
-  todayEnd.setDate(todayEnd.getDate() + 1);
+      if (leftRetention !== rightRetention) {
+        return leftRetention - rightRetention;
+      }
 
-  const dueTodayConcepts = reviewedDueConcepts.filter((concept) => {
-    const nextReviewAt = concept?.next_review_at ?? concept?.nextReviewAt;
-    if (!nextReviewAt) return true;
-    const nextReviewTime = new Date(nextReviewAt).getTime();
-    if (!Number.isFinite(nextReviewTime)) return true;
-    return nextReviewTime < todayEnd.getTime();
-  });
+      const leftNextReviewAt = left.next_review_at ?? left.nextReviewAt ?? null;
+      const rightNextReviewAt =
+        right.next_review_at ?? right.nextReviewAt ?? null;
+      const leftNextReviewTime = new Date(leftNextReviewAt ?? 0).getTime();
+      const rightNextReviewTime = new Date(rightNextReviewAt ?? 0).getTime();
+
+      const leftTagRank = Number.isFinite(leftNextReviewTime)
+        ? leftNextReviewTime < todayStart.getTime()
+          ? 0
+          : 1
+        : 2;
+      const rightTagRank = Number.isFinite(rightNextReviewTime)
+        ? rightNextReviewTime < todayStart.getTime()
+          ? 0
+          : 1
+        : 2;
+
+      if (leftTagRank !== rightTagRank) {
+        return leftTagRank - rightTagRank;
+      }
+
+      if (leftNextReviewTime !== rightNextReviewTime) {
+        return leftNextReviewTime - rightNextReviewTime;
+      }
+
+      return String(left.title ?? "").localeCompare(String(right.title ?? ""));
+    });
 
   const hasAnyQuizzes = latestAttemptByConcept.size > 0;
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Skeleton from "react-loading-skeleton";
 
 import {
@@ -92,10 +93,23 @@ export default function DashboardView({
   onOpenSessions,
   nowMs,
 }) {
+  const pageSize = 5;
   const dueConcepts = dashboard?.dueConcepts ?? [];
   const sessionRetentionOverview = dashboard?.sessionRetentionOverview ?? [];
   const stats = dashboard?.stats ?? {};
   const profile = dashboard?.profile;
+  const [duePage, setDuePage] = useState(1);
+
+  useEffect(() => {
+    setDuePage(1);
+  }, [dueConcepts.length]);
+
+  const totalDuePages = Math.max(1, Math.ceil(dueConcepts.length / pageSize));
+  const safeDuePage = Math.min(duePage, totalDuePages);
+  const pagedDueConcepts = useMemo(() => {
+    const startIndex = (safeDuePage - 1) * pageSize;
+    return dueConcepts.slice(startIndex, startIndex + pageSize);
+  }, [dueConcepts, safeDuePage]);
 
   if (loading) return <DashboardSkeleton />;
 
@@ -179,7 +193,7 @@ export default function DashboardView({
             </button>
           </div>
         ) : (
-          dueConcepts.map((raw, index) => {
+          pagedDueConcepts.map((raw, index) => {
             const concept = normalizeConcept(raw);
             const hasQuizAttempt = Boolean(concept.hasQuizAttempt);
             const isMastered = Boolean(concept.isMastered);
@@ -251,6 +265,51 @@ export default function DashboardView({
           })
         )}
       </div>
+
+      {dueConcepts.length > pageSize && (
+        <div
+          className="card"
+          style={{
+            marginTop: 12,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <div className="muted">
+            Showing{" "}
+            {Math.min((safeDuePage - 1) * pageSize + 1, dueConcepts.length)}-
+            {Math.min(safeDuePage * pageSize, dueConcepts.length)} of{" "}
+            {dueConcepts.length}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {safeDuePage > 1 && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() =>
+                  setDuePage((current) => Math.max(1, current - 1))
+                }
+              >
+                Prev
+              </button>
+            )}
+            {safeDuePage < totalDuePages && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() =>
+                  setDuePage((current) => Math.min(totalDuePages, current + 1))
+                }
+              >
+                Next
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="section-title">Retention Overview (Session-Based)</div>
       <div className="card">

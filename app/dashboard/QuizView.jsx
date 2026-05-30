@@ -7,29 +7,12 @@ import { evaluateQuestion } from "./dashboardShared";
 function QuizSkeleton() {
   return (
     <div>
-      <div className="page-header">
-        <Skeleton height={22} width={108} />
-        <div style={{ marginTop: 10 }}>
-          <Skeleton height={42} width="40%" />
-        </div>
-        <div style={{ marginTop: 8 }}>
-          <Skeleton height={18} width="64%" />
-        </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 12 }}>
-        <Skeleton height={18} width="36%" />
-        <div style={{ marginTop: 8 }}>
-          <Skeleton height={14} width="58%" />
-        </div>
-      </div>
-
       <div className="quiz-grid">
         {Array.from({ length: 5 }).map((_, index) => (
           <div className="q-card" key={index}>
-            <Skeleton height={12} width="34%" />
+            <Skeleton height={12} width="32%" />
             <div style={{ marginTop: 10 }}>
-              <Skeleton height={18} width="86%" />
+              <Skeleton height={18} width="84%" />
             </div>
             <div className="option-list">
               {Array.from({ length: 4 }).map((__, optionIndex) => (

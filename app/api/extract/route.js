@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { FREE_DAILY_UPLOAD_LIMIT } from "@/lib/constants";
+import { startOfIstDay } from "@/lib/istDate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractConcepts } from "@/lib/extractConcepts";
 import { analyzeCognitiveLoad } from "@/lib/cognitiveLoad";
@@ -138,8 +139,7 @@ export async function POST(request) {
 
   // ── Free-tier daily upload guard ───────────────────────────────────────
   try {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const todayStart = startOfIstDay();
 
     const { count: todayUploads } = await admin
       .from("study_sessions")

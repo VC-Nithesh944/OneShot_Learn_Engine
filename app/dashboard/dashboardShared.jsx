@@ -3,6 +3,8 @@
 import { FaCheck } from "react-icons/fa";
 import { FaCircleCheck } from "react-icons/fa6";
 
+import { diffIstDays } from "@/lib/istDate";
+
 export function estimateUploadSecondsFromChunkCount(chunkCount) {
   const safeChunks = Math.max(1, Number(chunkCount) || 1);
   return Math.max(18, Math.min(420, Math.round(18 + safeChunks * 9)));
@@ -135,7 +137,7 @@ export function relativeTime(value) {
   if (!value) return "Not started";
   const time = new Date(value).getTime();
   if (Number.isNaN(time)) return "Not started";
-  const days = Math.round((Date.now() - time) / 86400000);
+  const days = diffIstDays(Date.now(), time);
   if (days <= 0) return "today";
   if (days === 1) return "1 day ago";
   if (days < 7) return `${days} days ago`;
@@ -155,13 +157,7 @@ export function dueLabel(nextReviewAt, nowMs = Date.now()) {
   if (!nextReviewAt) return "Due Today";
   const time = new Date(nextReviewAt).getTime();
   if (Number.isNaN(time)) return "Due Today";
-  const currentDay = new Date(nowMs);
-  currentDay.setHours(0, 0, 0, 0);
-  const targetDay = new Date(time);
-  targetDay.setHours(0, 0, 0, 0);
-  const dayDiff = Math.round(
-    (targetDay.getTime() - currentDay.getTime()) / 86400000,
-  );
+  const dayDiff = diffIstDays(time, nowMs);
   if (dayDiff <= 0) return "Due Today";
   if (dayDiff === 1) return "Tomorrow";
   return `in ${dayDiff} days`;

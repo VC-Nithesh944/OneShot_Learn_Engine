@@ -9,6 +9,7 @@
 // ============================================================
 import { auth } from "@clerk/nextjs/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getIstDateKey } from "@/lib/istDate";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -178,27 +179,21 @@ export async function POST(request) {
     .single();
 
   const today = new Date();
-  const todayIso = today.toISOString();
+  const todayKey = getIstDateKey(today);
 
   if (userProfile) {
     const lastActive = userProfile.last_active_at
       ? new Date(userProfile.last_active_at)
       : null;
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    const lastActiveDay = lastActive
-      ? lastActive.toISOString().slice(0, 10)
-      : null;
-    const todayStr = today.toISOString().slice(0, 10);
-    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+    const lastActiveDay = lastActive ? getIstDateKey(lastActive) : null;
+    const yesterdayKey = getIstDateKey(new Date(today.getTime() - 86400000));
 
     let newStreak = userProfile.current_streak ?? 0;
 
-    if (lastActiveDay === todayStr) {
+    if (lastActiveDay === todayKey) {
       // Already studied today — keep the streak, but initialize day 1 if needed.
       if (newStreak === 0) newStreak = 1;
-    } else if (lastActiveDay === yesterdayStr) {
+    } else if (lastActiveDay === yesterdayKey) {
       newStreak += 1;
     } else {
       newStreak = 1;
@@ -211,7 +206,7 @@ export async function POST(request) {
       .update({
         current_streak: newStreak,
         longest_streak: newLongest,
-        last_active_at: todayIso,
+        last_active_at: today.toISOString(),
       })
       .eq("clerk_user_id", userId);
   } else {
@@ -219,7 +214,7 @@ export async function POST(request) {
       clerk_user_id: userId,
       current_streak: 1,
       longest_streak: 1,
-      last_active_at: todayIso,
+      last_active_at: today.toISOString(),
     });
   }
 

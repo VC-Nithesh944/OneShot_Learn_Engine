@@ -17,6 +17,7 @@ import {
   normalizeConcept,
   qualityForScore,
 } from "./dashboardShared";
+import { IST_TIME_ZONE } from "@/lib/istDate";
 import {
   getRetentionCurve,
   getRecommendedLearnMode,
@@ -1601,7 +1602,7 @@ function QuizView({
   );
 }
 
-function ProfileView({ onUpdated }) {
+function ProfileView({ onUpdated, refreshToken = 0 }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [nameInput, setNameInput] = useState("");
@@ -1636,6 +1637,14 @@ function ProfileView({ onUpdated }) {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshToken]);
+
+  useEffect(() => {
+    let cancelled = false;
 
     if (typeof window !== "undefined") {
       const supportsPush = pushSupported;
@@ -1825,6 +1834,7 @@ function ProfileView({ onUpdated }) {
 
   const memberSince = profile.member_since
     ? new Date(profile.member_since).toLocaleDateString("en-IN", {
+        timeZone: IST_TIME_ZONE,
         month: "long",
         year: "numeric",
       })
@@ -2006,13 +2016,13 @@ function ProfileView({ onUpdated }) {
             label: "Learned",
             value: memory.learning,
             color: "var(--amber)",
-            desc: "45–89%",
+            desc: "61–89%",
           },
           {
             label: "At Risk",
             value: memory.atRisk,
             color: "var(--rose)",
-            desc: "<45%",
+            desc: "<=60%",
           },
           {
             label: "Not Attempted",
@@ -2135,6 +2145,7 @@ function ProfileView({ onUpdated }) {
                 ? "var(--line)"
                 : `rgba(240, 170, 58, ${0.2 + intensity * 0.8})`;
             const label = new Date(date).toLocaleDateString("en-IN", {
+              timeZone: IST_TIME_ZONE,
               month: "short",
               day: "numeric",
             });
@@ -2938,6 +2949,7 @@ export default function DashboardPage() {
       });
 
       setQuizResult({ submitted: true, score, ...data });
+      refreshData();
       if (data.masteredMilestone) {
         setMasteryMoment(data.masteredMilestone);
       }
@@ -3195,7 +3207,9 @@ export default function DashboardPage() {
                 nowMs={nowMs}
               />
             )}
-            {screen === "profile" && <ProfileView onUpdated={refreshData} />}
+            {screen === "profile" && (
+              <ProfileView onUpdated={refreshData} refreshToken={refreshTick} />
+            )}
             {screen === "upload" && (
               <UploadViewLazy
                 onUpload={handleUpload}
