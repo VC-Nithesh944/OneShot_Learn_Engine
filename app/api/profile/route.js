@@ -59,7 +59,9 @@ function buildProfileResponse(profile, concepts, attempts, sessions) {
     .map(([date, count]) => ({ date, count }));
 
   const subjectMap = new Map();
+  const sessionsById = new Map();
   for (const session of sessions) {
+    sessionsById.set(session.id, session);
     const key = session.subject ?? "General";
     if (!subjectMap.has(key)) {
       subjectMap.set(key, {
@@ -75,7 +77,7 @@ function buildProfileResponse(profile, concepts, attempts, sessions) {
   }
 
   for (const concept of concepts) {
-    const session = sessions.find((item) => item.id === concept.session_id);
+    const session = sessionsById.get(concept.session_id);
     if (!session) continue;
 
     const entry = subjectMap.get(session.subject ?? "General");

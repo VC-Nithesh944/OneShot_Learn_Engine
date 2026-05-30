@@ -96,6 +96,31 @@ function computeSimpleNextReview(score, qualityRating) {
   };
 }
 
+function computeCumulativeNextReview(attemptCount, now = Date.now()) {
+  const count = Math.max(0, Math.floor(Number(attemptCount ?? 0)));
+
+  if (count >= 4) {
+    return {
+      interval_days: null,
+      next_review_date: null,
+      failed: false,
+      is_mastered: true,
+    };
+  }
+
+  const stageIntervals = [1, 3, 7];
+  const intervalDays = stageIntervals
+    .slice(0, Math.max(1, count))
+    .reduce((total, days) => total + days, 0);
+
+  return {
+    interval_days: intervalDays,
+    next_review_date: new Date(now + intervalDays * 86400000).toISOString(),
+    failed: false,
+    is_mastered: false,
+  };
+}
+
 export async function POST(request) {
   const { userId } = await auth();
   if (!userId)
@@ -104,7 +129,6 @@ export async function POST(request) {
   const body = await request.json();
   const {
     conceptId,
-    transformStyle = null,
     score,
     qualityRating,
     timeTakenMs,
@@ -199,20 +223,6 @@ export async function POST(request) {
     });
   }
 
-  const normalizedTransformStyle = String(transformStyle ?? "").toLowerCase();
-  if (
-    userProfile?.learning_style === "balanced" &&
-    ["visual", "story", "analogy", "simplified"].includes(
-      normalizedTransformStyle,
-    ) &&
-    score >= 70
-  ) {
-    await admin
-      .from("user_profiles")
-      .update({ learning_style: normalizedTransformStyle })
-      .eq("clerk_user_id", userId);
-  }
-
   // 2. Run SM-2 via the DB function
   let smResult = null;
 
@@ -253,10 +263,37 @@ export async function POST(request) {
     examProbability: Number(conceptRow?.exam_probability ?? 3),
   });
 
+  const cumulativeSchedule = computeCumulativeNextReview(quizAttemptCount ?? 0);
+
+  smResult = {
+    ...smResult,
+    ...cumulativeSchedule,
+  };
+
+  const nextReviewDate = cumulativeSchedule.next_review_date;
+
+  const { error: conceptUpdateError } = await admin
+    .from("concepts")
+    .update({
+      next_review_at: nextReviewDate,
+    })
+    .eq("id", conceptId)
+    .eq("user_id", userId);
+
+  if (conceptUpdateError) {
+    console.error(
+      "[quiz/submit] concept schedule update failed:",
+      conceptUpdateError.message,
+    );
+  }
+
   if (attemptRow?.id) {
     const { error: attemptUpdateError } = await admin
       .from("quiz_attempts")
-      .update({ estimated_retention_pct: estimatedRetentionPct })
+      .update({
+        estimated_retention_pct: estimatedRetentionPct,
+        next_review_at: nextReviewDate,
+      })
       .eq("id", attemptRow.id);
 
     if (attemptUpdateError) {
@@ -276,12 +313,13 @@ export async function POST(request) {
     };
   }
 
-  // estimated_retention_pct is persisted on quiz_attempts.
-  // concepts.next_review_at remains synced by the review_schedule trigger.
+  // estimated_retention_pct and next_review_at are persisted on quiz_attempts.
+  // concepts.next_review_at remains synced as a fallback.
   return NextResponse.json({
     success: true,
     schedule: smResult,
-    nextReviewDate: smResult.next_review_date ?? smResult.nextReviewDate,
+    nextReviewDate:
+      nextReviewDate ?? smResult.next_review_date ?? smResult.nextReviewDate,
     retentionPct: estimatedRetentionPct,
     estimatedRetentionPct,
     masteredMilestone,

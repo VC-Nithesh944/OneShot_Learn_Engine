@@ -5,7 +5,7 @@
 // ============================================================
 import { auth } from "@clerk/nextjs/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { generateQuiz } from "@/lib/generateQuiz";
+import { generateQuiz, getAdaptiveBloomLevel } from "@/lib/generateQuiz";
 import { NextResponse } from "next/server";
 
 function shuffleQuestions(questions) {
@@ -44,6 +44,16 @@ export async function GET(request) {
   const questionCount = 8;
   const displayCount = 5;
 
+  const { data: attempts } = await supabase
+    .from("quiz_attempts")
+    .select("score, quality_rating, time_taken_ms")
+    .eq("concept_id", conceptId)
+    .eq("user_id", userId)
+    .order("attempted_at", { ascending: false })
+    .limit(5);
+
+  const desiredBloomLevel = getAdaptiveBloomLevel(attempts ?? []);
+
   const { data: cachedPool, error: poolReadError } = await supabase
     .from("quiz_question_pools")
     .select("*")
@@ -58,12 +68,13 @@ export async function GET(request) {
   if (
     cachedPool?.question_pool &&
     Array.isArray(cachedPool.question_pool) &&
-    cachedPool.question_pool.length >= displayCount
+    cachedPool.question_pool.length >= displayCount &&
+    (cachedPool.bloom_level ?? "remember") === desiredBloomLevel
   ) {
     const questions = pickQuizQuestions(cachedPool.question_pool, displayCount);
     return NextResponse.json({
       quiz: {
-        bloom_level: cachedPool.bloom_level ?? "remember",
+        bloom_level: cachedPool.bloom_level ?? desiredBloomLevel,
         estimated_time_seconds: 90,
         questions,
       },
@@ -83,15 +94,6 @@ export async function GET(request) {
 
   if (error || !concept)
     return NextResponse.json({ error: "Concept not found" }, { status: 404 });
-
-  // Fetch last 5 attempts for adaptive difficulty
-  const { data: attempts } = await supabase
-    .from("quiz_attempts")
-    .select("score, quality_rating, time_taken_ms")
-    .eq("concept_id", conceptId)
-    .eq("user_id", userId)
-    .order("attempted_at", { ascending: false })
-    .limit(5);
 
   const generatedPool = await generateQuiz(
     concept,

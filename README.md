@@ -47,3 +47,13 @@ CRON_SECRET=your_random_cron_secret
 ```
 
 `NEXT_PUBLIC_VAPID_PUBLIC_KEY` must be available to the browser so the client can subscribe to push notifications.
+
+## Upload Limit Configuration
+
+To configure the free-tier daily upload cap, set this environment variable:
+
+```bash
+FREE_DAILY_UPLOAD_LIMIT=2
+```
+
+If not set, the app defaults to `2` uploads per day.

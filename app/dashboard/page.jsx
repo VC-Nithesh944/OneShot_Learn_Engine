@@ -3,438 +3,56 @@
 import { useEffect, useRef, useState } from "react";
 import { FaCheck } from "react-icons/fa";
 import { FaCircleCheck } from "react-icons/fa6";
+import dynamic from "next/dynamic";
 import Skeleton from "react-loading-skeleton";
 import { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import { useClerk } from "@clerk/nextjs";
 
 import {
+  estimateUploadSeconds,
+  estimateUploadSecondsFromChunkCount,
+  evaluateQuestion,
+  formatCountdown,
+  normalizeConcept,
+  qualityForScore,
+} from "./dashboardShared";
+import {
   getRetentionCurve,
   getRecommendedLearnMode,
   getSpacedReviewSchedule,
 } from "@/lib/memorySignals";
 
-const STYLE = `
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Lora:wght@500;600&display=swap');
-
-:root {
-  --bg: #f5f1e8;
-  --bg-alt: #f3eee4;
-  --bg-glow-1: rgba(240, 170, 58, 0.18);
-  --bg-glow-2: rgba(43, 168, 136, 0.14);
-  --panel: rgba(255, 255, 255, 0.84);
-  --panel-strong: #ffffff;
-  --text: #1c1a16;
-  --muted: #73695b;
-  --line: rgba(28, 26, 22, 0.24);
-  --amber: #c47d0e;
-  --amber-soft: #fef5e4;
-  --teal: #0f7a63;
-  --teal-soft: #e3f5f0;
-  --rose: #b84040;
-  --rose-soft: #faeaea;
-  --shadow: 0 20px 60px rgba(28, 26, 22, 0.08);
-  --ring-bg: rgba(28, 26, 22, 0.08);
-  --surface-strong: rgba(255, 255, 255, 0.72);
-  --surface-soft: rgba(255, 255, 255, 0.86);
-  --accent-surface: linear-gradient(180deg, rgba(254, 245, 228, 0.95), rgba(255, 255, 255, 0.78));
-}
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #0f0d0b;
-  --bg-alt: #17120e;
-  --bg-glow-1: rgba(240, 170, 58, 0.14);
-  --bg-glow-2: rgba(111, 183, 160, 0.08);
-  --panel: rgba(6, 5, 5, 0.84);
-  --panel-strong: rgba(6, 5, 5, 0.92);
-  --text: #f4ede2;
-  --muted: #c1b3a4;
-  --line: rgba(244, 237, 228, 0.22);
-  --amber: #f0aa3a;
-  --amber-soft: rgba(240, 170, 58, 0.14);
-  --teal: #6fb7a0;
-  --teal-soft: rgba(111, 183, 160, 0.14);
-  --rose: #d67b73;
-  --rose-soft: rgba(214, 123, 115, 0.14);
-  --shadow: 0 20px 60px rgba(0, 0, 0, 0.38);
-  --ring-bg: rgba(244, 237, 228, 0.08);
-  --surface-strong: rgba(6, 5, 5, 0.88);
-  --surface-soft: rgba(6, 5, 5, 0.94);
-  --accent-surface: rgba(6, 5, 5, 0.92);
-}
-
-* { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; }
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'DM Sans', sans-serif;
-  transition: background 0.25s ease, color 0.25s ease;
-}
-
-@keyframes floatConfetti {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-8px) scale(1.1); }
-}
-
-a { color: inherit; text-decoration: none; }
-button, input, select { font: inherit; }
-
-.shell { min-height: 100vh; display: flex; }
-.sidebar {
-  width: 250px;
-  background: var(--panel);
-  border-right: 1px solid var(--line);
-  padding: 24px 16px;
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  backdrop-filter: blur(16px);
-}
-.brand { padding: 6px 10px 18px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
-.brand-name { font-family: 'Lora', serif; font-size: 22px; font-weight: 600; letter-spacing: -0.03em; }
-.brand-sub { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
-.nav-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; border-radius: 12px; cursor: pointer;
-  color: var(--muted); margin-bottom: 6px; border: 1px solid transparent;
-}
-.nav-item:hover { background: var(--surface-strong); color: var(--text); }
-.nav-item.active { background: var(--panel-strong); border-color: var(--line); color: var(--text); box-shadow: 0 8px 20px rgba(28,26,22,0.05); }
-.nav-icon { width: 18px; text-align: center; }
-.sidebar-bottom { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line); }
-.user-pill { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--panel-strong); border: 1px solid var(--line); border-radius: 16px; }
-.avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--amber-soft); color: var(--amber); font-weight: 700; }
-.user-name { font-size: 14px; font-weight: 700; }
-.user-plan { font-size: 12px; color: var(--muted); }
-.sidebar-logout { margin-top: 10px; width: 100%; }
-.sidebar-theme { margin-top: 10px; width: 100%; }
-
-.main { flex: 1; max-width: 1080px; width: 100%; padding: 28px; }
-.top-banner {
-  margin-bottom: 16px; padding: 12px 14px; border-radius: 14px;
-  background: var(--panel); border: 1px solid var(--line);
-}
-.page-header { margin-bottom: 22px; }
-.page-header h1 { margin: 0; font-family: 'Lora', serif; font-size: clamp(26px, 3.8vw, 42px); letter-spacing: -0.04em; }
-.page-subtitle { margin-top: 6px; color: var(--muted); line-height: 1.6; }
-
-.grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 22px; }
-.card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  box-shadow: var(--shadow);
-  padding: 18px;
-}
-.stat-label { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-.stat-value { font-family: 'Lora', serif; font-size: 30px; font-weight: 600; letter-spacing: -0.04em; }
-.stat-sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
-.accent-amber { color: var(--amber); }
-.accent-teal { color: var(--teal); }
-.accent-rose { color: var(--rose); }
-
-.section-title { margin: 22px 0 12px; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
-.stack { display: flex; flex-direction: column; gap: 10px; }
-.row-card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
-  padding: 16px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  cursor: pointer;
-}
-.row-card:hover { transform: translateY(-1px); }
-.retention-ring {
-  width: 38px; height: 38px; flex: 0 0 auto; position: relative; display: grid; place-items: center;
-  border-radius: 50%; border: 1px solid var(--panel); overflow: hidden; background: transparent;
-}
-.retention-ring-mastered {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  position: relative;
-  display: grid;
-  place-items: center;
-  font-size: 28px;
-}
-.retention-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); display: block; }
-.retention-ring-pct { position: relative; z-index: 1; font-size: 11px; font-weight: 700; line-height: 1; display: grid; place-items: center; }
-.mastered-check-badge {
-  display: inline-grid;
-  place-items: center;
-  width: 1.25em;
-  height: 1.25em;
-  border-radius: 999px;
-  background: rgba(43, 168, 136, 0.14);
-  color: var(--teal);
-  flex: 0 0 auto;
-}
-.mastered-check-badge svg { display: block; width: 100%; height: 100%; }
-.mastery-success-icon {
-  width: 96px;
-  height: 96px;
-  margin: 0 auto;
-  border-radius: 50%;
-  background: rgba(34, 197, 94, 0.12);
-  border: 1px solid rgba(34, 197, 94, 0.28);
-  display: grid;
-  place-items: center;
-  box-shadow: 0 0 50px rgba(34, 197, 94, 0.22);
-  color: #22c55e;
-}
-.mastery-success-icon svg {
-  display: block;
-}
-.row-main { flex: 1; min-width: 0; }
-.row-title { font-weight: 700; }
-.row-meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
-.badge { font-size: 12px; border-radius: 999px; padding: 5px 10px; font-weight: 700; }
-.badge-good { background: var(--teal-soft); color: var(--teal); }
-.badge-today { background: var(--amber-soft); color: var(--amber); }
-.badge-urgent { background: var(--rose-soft); color: var(--rose); }
-.badge-exam { background: rgba(196,125,14,0.14); color: #9b5f00; }
-
-@keyframes masteryPop {
-  0% {
-    opacity: 0;
-    transform: scale(0.82);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(1.04);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.empty { text-align: center; padding: 42px 20px; }
-.empty-title { font-family: 'Lora', serif; font-size: 22px; margin-bottom: 8px; }
-.empty-sub { color: var(--muted); max-width: 420px; margin: 0 auto 16px; line-height: 1.7; }
-
-.chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.chip {
-  display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px;
-  border: 1px solid var(--line); background: var(--surface-strong); cursor: pointer;
-}
-.chip.active { background: var(--amber-soft); border-color: rgba(196,125,14,0.25); }
-
-.btn {
-  border: 0; border-radius: 14px; padding: 12px 16px; cursor: pointer; font-weight: 700;
-}
-.btn-primary { background: var(--text); color: var(--bg); }
-.btn-secondary { background: var(--panel-strong); border: 1px solid var(--line); color: var(--text); }
-.btn-amber { background: var(--amber); color: #0e0c0a; }
-
-.two-col { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 12px; }
-.concept-hero { display: flex; flex-direction: column; gap: 12px; }
-.kicker { color: var(--muted); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; }
-.title { font-family: 'Lora', serif; font-size: clamp(24px, 3vw, 34px); font-weight: 600; letter-spacing: -0.04em; margin: 0; }
-.body { color: var(--text); line-height: 1.8; }
-.kw-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.kw { font-size: 12px; padding: 6px 10px; border-radius: 999px; background: var(--amber-soft); border: 1px solid var(--line); }
-.tabs { display: flex; gap: 8px; flex-wrap: wrap; }
-.tab { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-strong); cursor: pointer; color: var(--text); }
-.tab.active { background: var(--text); color: var(--bg); border-color: var(--text); }
-.pre {
-  white-space: pre-wrap; background: var(--surface-soft);
-  border: 1px solid var(--line); border-radius: 16px; padding: 14px; line-height: 1.7;
-}
-.callout { margin-top: 12px; padding: 14px 16px; border-radius: 16px; background: var(--amber-soft); border-left: 4px solid var(--amber); }
-.exam-summary { margin-top: 14px; margin-bottom: 14px; padding: 16px; border-radius: 18px; border: 1px solid rgba(196,125,14,0.2); background: #f0aa3a0f; }
-.exam-summary-grid { display: grid; gap: 8px; margin-top: 10px; }
-.exam-summary-item { padding: 12px 14px; border-radius: 14px; background: var(--surface-strong); border: 1px solid var(--line); }
-.exam-summary-item strong { display: block; margin-bottom: 4px; }
-
-.quiz-grid { display: grid; gap: 12px; }
-.q-card { padding: 16px; border-radius: 18px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
-.q-title { font-weight: 700; margin-bottom: 10px; }
-.option-list { display: grid; gap: 8px; margin-top: 12px; }
-.option { padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-strong); cursor: pointer; }
-.option.selected { background: var(--amber-soft); border-color: rgba(196,125,14,0.25); }
-.option.select { background: rgba(196,131,31,1); border-color: rgba(196,125,14,0.25); }
-.option.correct { background: var(--teal-soft); border-color: rgba(15,122,99,0.22); }
-.option.wrong { background: var(--rose-soft); border-color: rgba(184,64,64,0.22); }
-.score-box { margin-top: 16px; padding: 16px; border-radius: 18px; background: var(--teal-soft); border: 1px solid rgba(15,122,99,0.2); }
-
-.upload-box { display: grid; gap: 12px; }
-.dropzone {
-  border: 1.5px dashed var(--line); border-radius: 20px; padding: 28px; background: var(--panel);
-}
-.dropzone.drag { background: rgba(240,170,58,0.08); border-color: rgba(196,125,14,0.5); }
-.muted { color: var(--muted); }
-.notice { margin-bottom: 12px; }
-.upload-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 10px;
-}
-.upload-quota-pill {
-  white-space: nowrap;
-  margin-top: 4px;
-  border-radius: 10px;
-  border: 1px solid rgba(196,125,14,0.28);
-  background: var(--amber-soft);
-  color: var(--amber);
-  padding: 6px 10px;
-  font-size: 12px;
-  font-weight: 700;
-}
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1300;
-  background: rgba(0, 0, 0, 0.62);
-  display: grid;
-  place-items: center;
-  padding: 20px;
-}
-.premium-modal {
-  width: 100%;
-  max-width: 440px;
-  background: rgba(6, 5, 5, 1);
-  border-color: rgba(196,125,14,0.32);
-}
-.premium-crown {
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: rgba(196,125,14,0.16);
-  color: var(--amber);
-  font-size: 22px;
-  margin-bottom: 10px;
-}
-.premium-actions {
-  margin-top: 18px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.text-input {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 11px 12px;
-  background: var(--surface-soft);
-  color: var(--text);
-}
-.text-input:focus {
-  outline: none;
-  border-color: rgba(28,26,22,0.35);
-  box-shadow: 0 0 0 2px rgba(240,170,58,0.2);
-}
-
-@media (max-width: 1024px) {
-  .shell { flex-direction: row; }
-  .sidebar {
-    width: 220px;
-    height: 100vh;
-    position: sticky;
-    transform: none;
-    box-shadow: none;
-  }
-  .main { max-width: none; padding: 18px; }
-  .grid-4, .two-col { grid-template-columns: 1fr 1fr; }
-}
-
-@media (max-width: 640px) {
-  .shell { display: block; }
-  .sidebar {
-    position: fixed;
-    inset: 0 auto 0 0;
-    width: 280px;
-    height: 100vh;
-    z-index: 30;
-    transform: translateX(-102%);
-    transition: transform 0.22s ease;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
-  }
-  .sidebar.open { transform: translateX(0); }
-  .sidebar-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 25;
-    border: 0;
-    padding: 0;
-    background: rgba(0, 0, 0, 0.36);
-    backdrop-filter: blur(2px);
-  }
-  .mobile-menu-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 42px;
-    height: 42px;
-    border-radius: 12px;
-    border: 1px solid var(--line);
-    background: var(--panel);
-    color: var(--text);
-    box-shadow: var(--shadow);
-    position: sticky;
-    top: 14px;
-    z-index: 20;
-    margin-bottom: 12px;
-  }
-  .mobile-menu-button:hover { background: var(--panel-strong); }
-  .main { padding: 14px; }
-  .grid-4, .two-col { grid-template-columns: 1fr; }
-  .row-card { align-items: flex-start; flex-direction: column; }
-  .upload-header-row { flex-direction: column; }
-}
-
-@media (min-width: 641px) {
-  .sidebar-overlay,
-  .mobile-menu-button {
-    display: none;
-  }
-}
-`;
-
 const NAV_ITEMS = [
   { id: "dashboard", icon: "◈", label: "Dashboard" },
   { id: "upload", icon: "↑", label: "Upload Notes" },
   { id: "sessions", icon: "≡", label: "My Sessions" },
-  { id: "learn", icon: "◎", label: "Learn" },
-  { id: "quiz", icon: "⬡", label: "Quiz" },
+  { id: "learn", icon: "◎", label: "Learn", requiresConcept: true },
+  { id: "quiz", icon: "⬡", label: "Quiz", requiresConcept: true },
 ];
-const PREMIUM_MONTHLY_PRICE = "₹149/month";
+const DEFAULT_PREMIUM_MONTHLY_PRICE = "₹149/month";
 const PAYMENT_GATEWAY_URL =
   process.env.NEXT_PUBLIC_PREMIUM_CHECKOUT_URL ?? "/pricing?plan=premium";
 
-function estimateUploadSecondsFromChunkCount(chunkCount) {
-  const safeChunks = Math.max(1, Number(chunkCount) || 1);
-  return Math.max(18, Math.min(420, Math.round(18 + safeChunks * 9)));
-}
+const DashboardViewLazy = dynamic(() => import("./DashboardView"), {
+  loading: () => <DashboardSkeleton />,
+});
 
-function estimateUploadSeconds(file) {
-  if (!file?.size) return estimateUploadSecondsFromChunkCount(1);
-  const sizeMb = file.size / (1024 * 1024);
-  const approxChunks = Math.max(1, Math.ceil(file.size / 1024 / 18));
-  return Math.max(
-    estimateUploadSecondsFromChunkCount(approxChunks),
-    Math.max(18, Math.min(260, Math.round(16 + sizeMb * 34))),
-  );
-}
+const UploadViewLazy = dynamic(() => import("./UploadView"), {
+  loading: () => <div className="card">Loading upload view...</div>,
+});
 
-function formatCountdown(totalSeconds) {
-  const safeSeconds = Math.max(0, Math.ceil(Number(totalSeconds) || 0));
-  const minutes = Math.floor(safeSeconds / 60);
-  const seconds = safeSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
+const SessionsViewLazy = dynamic(() => import("./SessionsView"), {
+  loading: () => <SessionsSkeleton />,
+});
+
+const LearnViewLazy = dynamic(() => import("./LearnView"), {
+  loading: () => <LearnSkeleton />,
+});
+
+const QuizViewLazy = dynamic(() => import("./QuizView"), {
+  loading: () => <QuizSkeleton />,
+});
 
 function fetchJson(url, options = {}) {
   return fetch(url, { cache: "no-store", ...options }).then(
@@ -481,184 +99,6 @@ async function extractTextFromSelectedFile(file) {
   throw new Error(
     "DOCX is not supported yet. Please upload a PDF or TXT file.",
   );
-}
-
-function normalizeKeywords(keywords) {
-  if (Array.isArray(keywords)) return keywords.filter(Boolean);
-  if (typeof keywords === "string") {
-    return keywords
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  return [];
-}
-
-function normalizeExamSummary(summary) {
-  if (!summary) return null;
-  if (typeof summary === "string") {
-    try {
-      return JSON.parse(summary);
-    } catch {
-      return null;
-    }
-  }
-  return summary;
-}
-
-function examPriorityForProbability(value) {
-  const probability = Number(value ?? 3);
-  if (probability >= 5) return { label: "Must know", className: "badge-exam" };
-  if (probability >= 4)
-    return { label: "Very likely", className: "badge-exam" };
-  if (probability >= 3) return { label: "Probable", className: "badge-exam" };
-  if (probability >= 2) return { label: "Possible", className: "badge-exam" };
-  return { label: "Low yield", className: "badge-exam" };
-}
-
-function normalizeConcept(concept) {
-  if (!concept) return null;
-  const conceptId =
-    concept.id ?? concept.concept_id ?? concept.conceptId ?? null;
-  const examProbability = Number(
-    concept.exam_probability ?? concept.examProbability ?? 3,
-  );
-  return {
-    ...concept,
-    id: conceptId,
-    concept_id: concept.concept_id ?? conceptId,
-    session_id: concept.session_id ?? concept.sessionId ?? null,
-    title: concept.title ?? "Untitled concept",
-    category: concept.category ?? concept.subject ?? "Concept",
-    complexity: Number(concept.complexity ?? 3),
-    examProbability,
-    examPriority: examPriorityForProbability(examProbability),
-    hasQuizAttempt:
-      concept.has_quiz_attempt === true ||
-      concept.hasQuizAttempt === true ||
-      concept.has_quiz_attempt === 1 ||
-      concept.hasQuizAttempt === 1 ||
-      String(
-        concept.has_quiz_attempt ?? concept.hasQuizAttempt ?? "",
-      ).toLowerCase() === "true",
-    retentionPct: Number(
-      concept.retention_pct ??
-        concept.retentionPct ??
-        concept.strength_score ??
-        0,
-    ),
-    keywords: normalizeKeywords(concept.keywords),
-    baseExplanation:
-      concept.base_explanation ??
-      concept.baseExplanation ??
-      concept.explanation ??
-      "",
-    examQuestion: concept.exam_question ?? concept.examQuestion ?? "",
-    comparisonPair: concept.comparison_pair ?? concept.comparisonPair ?? null,
-    whyForgettable: concept.why_forgettable ?? concept.whyForgettable ?? "",
-    quizAttemptCount: Number(
-      concept.quiz_attempt_count ?? concept.quizAttemptCount ?? 0,
-    ),
-    isMastered:
-      concept.is_mastered === true ||
-      concept.isMastered === true ||
-      concept.is_mastered === 1 ||
-      concept.isMastered === 1 ||
-      String(concept.is_mastered ?? concept.isMastered ?? "").toLowerCase() ===
-        "true",
-    isDueReview:
-      concept.is_due_review === true ||
-      concept.isDueReview === true ||
-      concept.is_due_review === 1 ||
-      concept.isDueReview === 1 ||
-      String(
-        concept.is_due_review ?? concept.isDueReview ?? "",
-      ).toLowerCase() === "true",
-    nextReviewAt:
-      concept.next_review_at ??
-      concept.nextReviewAt ??
-      concept.next_review_date ??
-      null,
-    lastReviewedAt:
-      concept.last_reviewed_at ??
-      concept.lastReviewedAt ??
-      concept.last_quiz_at ??
-      concept.lastQuizAt ??
-      null,
-  };
-}
-
-function relativeTime(value) {
-  if (!value) return "recently";
-  const time = new Date(value).getTime();
-  if (Number.isNaN(time)) return "recently";
-  const days = Math.round((Date.now() - time) / 86400000);
-  if (days <= 0) return "today";
-  if (days === 1) return "1 day ago";
-  if (days < 7) return `${days} days ago`;
-  const weeks = Math.round(days / 7);
-  return `${weeks} week${weeks === 1 ? "" : "s"} ago`;
-}
-
-function reviewTimingLabelFromDays(days) {
-  const normalizedDays = Number(days);
-  if (!Number.isFinite(normalizedDays)) return "Due Today";
-  if (normalizedDays <= 0) return "Due Today";
-  if (normalizedDays === 1) return "Tomorrow";
-  return `in ${Math.round(normalizedDays)} days`;
-}
-
-function dueLabel(nextReviewAt, nowMs = Date.now()) {
-  if (!nextReviewAt) return "Due Today";
-  const time = new Date(nextReviewAt).getTime();
-  if (Number.isNaN(time)) return "Due Today";
-  const currentDay = new Date(nowMs);
-  currentDay.setHours(0, 0, 0, 0);
-  const targetDay = new Date(time);
-  targetDay.setHours(0, 0, 0, 0);
-  const dayDiff = Math.round(
-    (targetDay.getTime() - currentDay.getTime()) / 86400000,
-  );
-  if (dayDiff <= 0) return "Due Today";
-  if (dayDiff === 1) return "Tomorrow";
-  return `in ${dayDiff} days`;
-}
-
-function badgeForRetention(pct) {
-  if (pct >= 65) return { label: "Strong", className: "badge-good" };
-  if (pct >= 40) return { label: "Fading", className: "badge-today" };
-  return { label: "Forgotten", className: "badge-urgent" };
-}
-
-function greeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-}
-
-function evaluateQuestion(question, answer) {
-  if (!question) return false;
-  if (question.type === "mcq")
-    return Number(answer) === Number(question.correct_option_index);
-  if (question.type === "true-false") return answer === question.correct_answer;
-  if (question.type === "fill-blank") {
-    const normalize = (value) =>
-      String(value ?? "")
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, " ");
-    return normalize(answer) === normalize(question.correct_answer);
-  }
-  return false;
-}
-
-function qualityForScore(score) {
-  if (score >= 85) return 5;
-  if (score >= 70) return 4;
-  if (score >= 55) return 3;
-  if (score >= 40) return 2;
-  return 1;
 }
 
 function DashboardSkeleton() {
@@ -1081,7 +521,10 @@ function SessionRetentionRow({ item, onOpenSessions }) {
         </div>
         <div className="row-meta">
           {item.attempted_concepts ?? 0}/{item.total_concepts ?? 0} concepts
-          quizzed · {relativeTime(item.last_quiz_at ?? item.created_at)}
+          quizzed ·{" "}
+          {(item.attempted_concepts ?? 0) > 0
+            ? relativeTime(item.last_quiz_at ?? item.created_at)
+            : "Not started"}
         </div>
       </div>
 
@@ -1132,6 +575,7 @@ function SessionRetentionRow({ item, onOpenSessions }) {
 
 function Sidebar({
   active,
+  activeConcept,
   profile,
   onNavigate,
   onLogout,
@@ -1140,6 +584,10 @@ function Sidebar({
   onClose,
   className = "",
 }) {
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => !item.requiresConcept || activeConcept,
+  );
+
   return (
     <aside className={`sidebar ${className}`.trim()}>
       <div className="brand">
@@ -1147,7 +595,7 @@ function Sidebar({
         <div className="brand-sub">Learning Engine</div>
       </div>
 
-      {NAV_ITEMS.map((item) => (
+      {visibleItems.map((item) => (
         <div
           key={item.id}
           className={`nav-item ${active === item.id ? "active" : ""}`}
@@ -1901,11 +1349,9 @@ function LearnView({
               <div className="muted" style={{ marginTop: 6 }}>
                 {isMastered
                   ? "Concept mastered — no active spaced reviews."
-                  : concept.nextReviewAt
-                    ? dueLabel(concept.nextReviewAt, nowMs)
-                    : spacedSchedule.intervalDays
-                      ? reviewTimingLabelFromDays(spacedSchedule.intervalDays)
-                      : "Due Today"}
+                  : spacedSchedule.intervalDays
+                    ? `Next Review ${reviewTimingLabelFromDays(spacedSchedule.intervalDays)}`
+                    : "Due Today"}
               </div>
               <div style={{ marginTop: 14 }}>
                 <button className="btn btn-amber" onClick={onStartQuiz}>
@@ -3067,14 +2513,20 @@ export default function DashboardPage() {
   const [quizStartedAt, setQuizStartedAt] = useState(null);
   const [masteryMoment, setMasteryMoment] = useState(null);
   const [premiumPopup, setPremiumPopup] = useState(null);
+  const [premiumMonthlyPrice, setPremiumMonthlyPrice] = useState(
+    DEFAULT_PREMIUM_MONTHLY_PRICE,
+  );
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const freeDailyUploadLimit = Number(dashboard?.uploadQuota?.dailyLimit ?? 2);
+  const dailyUploadLimitMessage = Number.isFinite(freeDailyUploadLimit)
+    ? `You've used your ${freeDailyUploadLimit} free uploads for today. Upgrade to Premium for unlimited uploads.`
+    : "You've reached your free upload limit for today. Upgrade to Premium for unlimited uploads.";
 
   const openUploadLimitPopup = () => {
     setPremiumPopup({
       title: "Daily upload limit reached",
-      message:
-        "You've used your 2 free uploads for today. Upgrade to Premium for unlimited uploads.",
-      price: PREMIUM_MONTHLY_PRICE,
+      message: dailyUploadLimitMessage,
+      price: premiumMonthlyPrice,
     });
   };
   const transformRequestsRef = useRef(new Map());
@@ -3103,6 +2555,34 @@ export default function DashboardPage() {
       // Ignore storage failures and keep the in-memory theme active.
     }
   }, [theme]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchJson("/api/pricing")
+      .then((response) => {
+        if (cancelled) return;
+        if (typeof response?.price === "string" && response.price.trim()) {
+          setPremiumMonthlyPrice(response.price.trim());
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPremiumMonthlyPrice(DEFAULT_PREMIUM_MONTHLY_PRICE);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!premiumPopup) return;
+    setPremiumPopup((current) =>
+      current ? { ...current, price: premiumMonthlyPrice } : current,
+    );
+  }, [premiumMonthlyPrice]);
 
   useEffect(() => {
     const updateNow = () => setNowMs(Date.now());
@@ -3226,11 +2706,9 @@ export default function DashboardPage() {
       setReviewFuture(null);
       setQuizResult(null);
       // Decide whether to show the future-review prompt:
-      // - hide for spaced-review / due concepts
       // - hide permanently if the latest attempt had review_in_future === true (user opted-in)
-      // - otherwise show and allow the user to choose (defaults to X if left unanswered)
+      // - otherwise show again on each non-mastered quiz attempt, including due reviews
       // - hide for mastered concepts as well
-      const isDue = Boolean(activeConcept?.isDueReview);
       const isMastered = Boolean(activeConcept?.isMastered);
       const prevChoice =
         activeConcept?.review_in_future ??
@@ -3240,12 +2718,7 @@ export default function DashboardPage() {
         activeConcept?.latestReviewInFuture ??
         activeConcept?.latest_review_in_future ??
         null;
-      if (
-        isDue ||
-        isMastered ||
-        prevChoice === true ||
-        latestReviewChoice === true
-      ) {
+      if (isMastered || prevChoice === true || latestReviewChoice === true) {
         setShowReviewQuestion(false);
       } else {
         setShowReviewQuestion(true);
@@ -3272,6 +2745,13 @@ export default function DashboardPage() {
       cancelled = true;
     };
   }, [screen, activeConcept]);
+
+  useEffect(() => {
+    if (activeConcept) return;
+    if (screen === "learn" || screen === "quiz") {
+      setScreen("sessions");
+    }
+  }, [activeConcept, screen]);
 
   useEffect(() => {
     if (screen !== "sessions" || !selectedSession) return;
@@ -3387,9 +2867,8 @@ export default function DashboardPage() {
         setPremiumPopup({
           title: "Daily upload limit reached",
           message:
-            error.body?.error ??
-            "You've used your 2 free uploads for today. Upgrade to Premium for unlimited uploads.",
-          price: PREMIUM_MONTHLY_PRICE,
+            error.body?.error ?? dailyUploadLimitMessage,
+          price: premiumMonthlyPrice,
         });
       } else {
         setUploadError(error.message);
@@ -3415,8 +2894,17 @@ export default function DashboardPage() {
 
   const submitQuiz = async () => {
     if (!quiz || !activeConcept) return;
-    // If the user didn't explicitly choose, treat as X (opt-out)
-    const reviewChoice = reviewFuture === null ? false : Boolean(reviewFuture);
+    // If the user didn't explicitly choose in this run, prefer the
+    // previously-persisted choice on the concept (so we don't overwrite
+    // an earlier Tick/X selection when the prompt is hidden).
+    const persistedChoice =
+      activeConcept?.review_in_future ?? activeConcept?.reviewInFuture ?? null;
+    const reviewChoice =
+      reviewFuture === null
+        ? persistedChoice === null
+          ? false
+          : Boolean(persistedChoice)
+        : Boolean(reviewFuture);
 
     const questions = quiz.questions ?? [];
     const correctCount = questions.reduce(
@@ -3542,7 +3030,6 @@ export default function DashboardPage() {
 
   return (
     <>
-      <style>{STYLE}</style>
       <SkeletonTheme
         baseColor={theme === "dark" ? "#1a1714" : "#e9e4d9"}
         highlightColor={theme === "dark" ? "#2b2723" : "#f6f1e6"}
@@ -3666,6 +3153,7 @@ export default function DashboardPage() {
           <Sidebar
             className={sidebarOpen ? "open" : ""}
             active={screen}
+            activeConcept={activeConcept}
             profile={dashboard?.profile}
             onNavigate={setScreen}
             onLogout={handleLogout}
@@ -3699,7 +3187,7 @@ export default function DashboardPage() {
               </div>
             )}
             {screen === "dashboard" && (
-              <DashboardView
+              <DashboardViewLazy
                 dashboard={dashboard}
                 loading={loading.overview}
                 onOpenConcept={openConcept}
@@ -3710,7 +3198,7 @@ export default function DashboardPage() {
             )}
             {screen === "profile" && <ProfileView onUpdated={refreshData} />}
             {screen === "upload" && (
-              <UploadView
+              <UploadViewLazy
                 onUpload={handleUpload}
                 uploading={loading.upload}
                 result={uploadResult}
@@ -3720,7 +3208,7 @@ export default function DashboardPage() {
               />
             )}
             {screen === "sessions" && (
-              <SessionsView
+              <SessionsViewLazy
                 sessions={sessions}
                 selectedSession={selectedSession}
                 concepts={sessionConcepts}
@@ -3731,7 +3219,7 @@ export default function DashboardPage() {
               />
             )}
             {screen === "learn" && (
-              <LearnView
+              <LearnViewLazy
                 concept={activeConcept}
                 mode={learnMode}
                 onModeChange={setLearnMode}
@@ -3744,7 +3232,7 @@ export default function DashboardPage() {
               />
             )}
             {screen === "quiz" && (
-              <QuizView
+              <QuizViewLazy
                 concept={activeConcept}
                 quiz={quiz}
                 answers={quizAnswers}

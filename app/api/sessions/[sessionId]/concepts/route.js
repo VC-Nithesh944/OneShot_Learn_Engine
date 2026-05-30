@@ -6,17 +6,6 @@ import { auth } from "@clerk/nextjs/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
-async function resolveSessionId(request, params) {
-  const resolvedParams = await params;
-  const fromParams = resolvedParams?.sessionId;
-  if (fromParams) return fromParams;
-
-  const pathname = new URL(request.url).pathname;
-  const parts = pathname.split("/").filter(Boolean);
-  const sessionIndex = parts.indexOf("sessions");
-  return sessionIndex >= 0 ? parts[sessionIndex + 1] : null;
-}
-
 function isUuid(value) {
   return (
     typeof value === "string" &&
@@ -31,7 +20,8 @@ export async function GET(request, { params }) {
   if (!userId)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const sessionId = await resolveSessionId(request, params);
+  const resolvedParams = await params;
+  const sessionId = resolvedParams?.sessionId;
   if (!isUuid(sessionId)) {
     return NextResponse.json(
       { error: "Valid sessionId required" },
@@ -56,7 +46,7 @@ export async function GET(request, { params }) {
     ? await supabase
         .from("quiz_attempts")
         .select(
-          "concept_id, attempted_at, estimated_retention_pct, review_in_future",
+          "concept_id, attempted_at, estimated_retention_pct, review_in_future, next_review_at",
         )
         .eq("user_id", userId)
         .order("attempted_at", { ascending: false })
@@ -73,6 +63,7 @@ export async function GET(request, { params }) {
   const attemptCountByConceptId = new Map();
   const latestRetentionByConceptId = new Map();
   const latestReviewFutureByConceptId = new Map();
+  const latestNextReviewByConceptId = new Map();
   for (const attempt of attempts ?? []) {
     attemptCountByConceptId.set(
       attempt.concept_id,
@@ -93,6 +84,12 @@ export async function GET(request, { params }) {
         Boolean(attempt.review_in_future),
       );
     }
+    if (!latestNextReviewByConceptId.has(attempt.concept_id)) {
+      latestNextReviewByConceptId.set(
+        attempt.concept_id,
+        attempt.next_review_at ?? null,
+      );
+    }
   }
   const concepts = (data ?? []).map((concept) => ({
     ...concept,
@@ -108,6 +105,14 @@ export async function GET(request, { params }) {
     review_in_future: latestReviewFutureByConceptId.get(concept.id),
     reviewInFuture: latestReviewFutureByConceptId.get(concept.id),
     last_quiz_at: latestAttemptByConceptId.get(concept.id) ?? null,
+    next_review_at:
+      latestNextReviewByConceptId.get(concept.id) ??
+      concept.next_review_at ??
+      null,
+    nextReviewAt:
+      latestNextReviewByConceptId.get(concept.id) ??
+      concept.next_review_at ??
+      null,
   }));
 
   return NextResponse.json({ concepts });

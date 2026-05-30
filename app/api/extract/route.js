@@ -1,6 +1,7 @@
 // app/api/extract/route.js
 
 import { auth } from "@clerk/nextjs/server";
+import { FREE_DAILY_UPLOAD_LIMIT } from "@/lib/constants";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractConcepts } from "@/lib/extractConcepts";
 import { analyzeCognitiveLoad } from "@/lib/cognitiveLoad";
@@ -16,7 +17,6 @@ export const maxDuration = 300; // 5 min — large PDFs + Gemini chunking
 
 // Defer loading `pdf-parse` until runtime to avoid importing
 // `pdfjs-dist` at module-evaluation time (it expects DOM globals).
-let pdfWorkerInitialized = false;
 
 // ── Category helpers ──────────────────────────────────────────────────────────
 
@@ -67,6 +67,9 @@ function safeStr(val, maxLen = 2000) {
 
 // ── PDF / text extraction ─────────────────────────────────────────────────────
 
+// Server-side file parsing is a fallback path.
+// Normal app flow extracts PDF text on the client and posts JSON text to this route.
+// We keep this for direct API/multipart callers and resilience if client extraction fails.
 async function extractTextFromFile(file) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const name = file.name.toLowerCase();
@@ -93,17 +96,14 @@ async function extractTextFromFile(file) {
     // module load time, which crashes Next.js App Router on cold start.
     const { PDFParse } = await import("pdf-parse");
 
-    if (!pdfWorkerInitialized) {
-      PDFParse.setWorker(
-        pathToFileURL(
-          join(
-            process.cwd(),
-            "node_modules/pdf-parse/dist/pdf-parse/web/pdf.worker.mjs",
-          ),
-        ).href,
-      );
-      pdfWorkerInitialized = true;
-    }
+    PDFParse.setWorker(
+      pathToFileURL(
+        join(
+          process.cwd(),
+          "node_modules/pdf-parse/dist/pdf-parse/web/pdf.worker.mjs",
+        ),
+      ).href,
+    );
 
     const parser = new PDFParse({ data: buffer });
     const result = await parser.getText();
@@ -147,7 +147,6 @@ export async function POST(request) {
       .eq("user_id", userId)
       .gte("created_at", todayStart.toISOString());
 
-    const FREE_DAILY_UPLOAD_LIMIT = 2;
     if ((todayUploads ?? 0) >= FREE_DAILY_UPLOAD_LIMIT) {
       return NextResponse.json(
         {
@@ -173,6 +172,7 @@ export async function POST(request) {
   let subject = "";
   let subjectCode = "custom";
 
+  // Primary app path: dashboard client posts extracted text as JSON.
   if (contentType.includes("application/json")) {
     let body;
     try {
@@ -189,7 +189,7 @@ export async function POST(request) {
     subject = String(body?.subject ?? "").trim();
     subjectCode = String(body?.subjectCode ?? "custom").trim();
   } else {
-    // Parse multipart form for smaller fallback uploads.
+    // Fallback path: parse multipart form and extract text server-side.
     let formData;
     try {
       formData = await request.formData();
@@ -266,7 +266,6 @@ export async function POST(request) {
     .insert({
       user_id: userId,
       filename: fileName,
-      original_text: rawText.slice(0, 50000),
       subject,
       subject_code: subjectCode || "custom",
       is_processed: false,
@@ -293,49 +292,71 @@ export async function POST(request) {
       (a, b) => (b.exam_probability ?? 3) - (a.exam_probability ?? 3),
     );
 
+    const conceptRows = ordered.map((concept, index) => ({
+      session_id: session.id,
+      user_id: userId,
+      title: safeStr(concept.title, 200),
+      base_explanation: safeStr(concept.base_explanation),
+      why_forgettable: safeStr(concept.why_forgettable),
+      complexity: Math.min(5, Math.max(1, Number(concept.complexity) || 3)),
+      keywords: Array.isArray(concept.keywords)
+        ? concept.keywords.map(String)
+        : [],
+      category: normalizeCategory(concept.category, concept.title),
+      visualizable: Boolean(concept.visualizable),
+      display_order: index,
+      exam_probability: Math.min(
+        5,
+        Math.max(1, Number(concept.exam_probability) || 3),
+      ),
+      exam_question: concept.exam_question
+        ? safeStr(concept.exam_question)
+        : null,
+      comparison_pair: concept.comparison_pair
+        ? safeStr(concept.comparison_pair)
+        : null,
+    }));
+
     const tempIdToUUID = {};
 
-    // First pass — insert concepts (triggers auto-create review_schedule + retrieval_scores)
-    for (const [index, concept] of ordered.entries()) {
-      const { data: row, error: err } = await admin
-        .from("concepts")
-        .insert({
-          session_id: session.id,
-          user_id: userId,
-          title: safeStr(concept.title, 200),
-          base_explanation: safeStr(concept.base_explanation),
-          why_forgettable: safeStr(concept.why_forgettable),
-          complexity: Math.min(5, Math.max(1, Number(concept.complexity) || 3)),
-          keywords: Array.isArray(concept.keywords)
-            ? concept.keywords.map(String)
-            : [],
-          category: normalizeCategory(concept.category, concept.title),
-          visualizable: Boolean(concept.visualizable),
-          display_order: index,
-          exam_probability: Math.min(
-            5,
-            Math.max(1, Number(concept.exam_probability) || 3),
-          ),
-          exam_question: concept.exam_question
-            ? safeStr(concept.exam_question)
-            : null,
-          comparison_pair: concept.comparison_pair
-            ? safeStr(concept.comparison_pair)
-            : null,
-        })
-        .select("id")
-        .single();
+    // Fast path: batch insert concepts in one round trip.
+    const { data: insertedRows, error: batchInsertError } = await admin
+      .from("concepts")
+      .insert(conceptRows)
+      .select("id, display_order");
 
-      if (err || !row?.id) {
-        // Log and skip — don't crash the whole upload over one bad concept
-        console.error(
-          `[extract] concept insert skipped "${concept.title}":`,
-          err?.message,
-        );
-        continue;
+    if (!batchInsertError && Array.isArray(insertedRows)) {
+      for (const row of insertedRows) {
+        const concept = ordered[Number(row.display_order)];
+        if (row?.id && concept?.temp_id) {
+          tempIdToUUID[concept.temp_id] = row.id;
+        }
       }
+    } else {
+      // Safety fallback: preserve previous behavior if batch insert fails.
+      console.warn(
+        "[extract] batch concept insert failed; falling back to per-row inserts:",
+        batchInsertError?.message,
+      );
 
-      tempIdToUUID[concept.temp_id] = row.id;
+      for (const [index, concept] of ordered.entries()) {
+        const { data: row, error: err } = await admin
+          .from("concepts")
+          .insert(conceptRows[index])
+          .select("id")
+          .single();
+
+        if (err || !row?.id) {
+          // Log and skip — don't crash the whole upload over one bad concept
+          console.error(
+            `[extract] concept insert skipped "${concept.title}":`,
+            err?.message,
+          );
+          continue;
+        }
+
+        tempIdToUUID[concept.temp_id] = row.id;
+      }
     }
 
     // Second pass — wire up prerequisite UUIDs
@@ -363,6 +384,16 @@ export async function POST(request) {
       issues: cogLoad.issues,
       recommendation: cogLoad.recommendation,
     });
+
+    const { count: totalConceptCount } = await admin
+      .from("concepts")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId);
+
+    await admin
+      .from("user_profiles")
+      .update({ total_concepts: totalConceptCount ?? 0 })
+      .eq("clerk_user_id", userId);
 
     const insertedCount = Object.keys(tempIdToUUID).length;
 

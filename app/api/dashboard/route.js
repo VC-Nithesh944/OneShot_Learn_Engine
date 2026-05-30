@@ -4,6 +4,7 @@
 //  (due concepts + user stats + retention overview)
 // ============================================================
 import { auth } from "@clerk/nextjs/server";
+import { FREE_DAILY_UPLOAD_LIMIT } from "@/lib/constants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -31,7 +32,6 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const supabase = await createServerSupabaseClient();
-  const FREE_DAILY_UPLOAD_LIMIT = 2;
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const tomorrowStart = new Date(todayStart);
@@ -42,7 +42,6 @@ export async function GET() {
     profileRes,
     dueRes,
     sessionsRes,
-    conceptsRes,
     sessionsCountRes,
     attemptsRes,
     uploadsTodayRes,
@@ -67,9 +66,6 @@ export async function GET() {
       .order("created_at", { ascending: false })
       .limit(60),
 
-    // Concept retention values grouped by session
-    supabase.from("concepts").select("*").eq("user_id", userId),
-
     // Count total sessions
     supabase
       .from("study_sessions")
@@ -80,7 +76,7 @@ export async function GET() {
     supabase
       .from("quiz_attempts")
       .select(
-        "concept_id, score, quality_rating, attempted_at, review_in_future, estimated_retention_pct",
+        "concept_id, session_id, score, quality_rating, attempted_at, review_in_future, estimated_retention_pct",
       )
       .eq("user_id", userId)
       .order("attempted_at", { ascending: false }),
@@ -94,7 +90,6 @@ export async function GET() {
 
   const profile = profileRes.data;
   const sessions = sessionsRes.data ?? [];
-  const concepts = conceptsRes.data ?? [];
   const sessionsCount = sessionsCountRes.count ?? 0;
   const attempts = attemptsRes.data ?? [];
   const uploadsUsedToday = uploadsTodayRes.count ?? 0;
@@ -106,6 +101,7 @@ export async function GET() {
   const latestAttemptByConcept = new Map();
   const attemptCountByConcept = new Map();
   const latestRetentionByConcept = new Map();
+  const attemptedConceptIdsBySession = new Map();
   for (const attempt of attempts) {
     if (!latestAttemptByConcept.has(attempt.concept_id)) {
       latestAttemptByConcept.set(attempt.concept_id, attempt);
@@ -120,18 +116,13 @@ export async function GET() {
       attempt.concept_id,
       (attemptCountByConcept.get(attempt.concept_id) ?? 0) + 1,
     );
-  }
 
-  const conceptsWithLatestRetention = concepts.map((concept) => {
-    const latestRetention = latestRetentionByConcept.get(concept.id);
-    return Number.isFinite(latestRetention)
-      ? { ...concept, retention_pct: latestRetention }
-      : concept;
-  });
-
-  const conceptsById = new Map();
-  for (const concept of conceptsWithLatestRetention) {
-    if (concept?.id) conceptsById.set(concept.id, concept);
+    if (!attemptedConceptIdsBySession.has(attempt.session_id)) {
+      attemptedConceptIdsBySession.set(attempt.session_id, new Set());
+    }
+    attemptedConceptIdsBySession
+      .get(attempt.session_id)
+      .add(attempt.concept_id);
   }
 
   const sessionsById = new Map();
@@ -141,25 +132,23 @@ export async function GET() {
 
   const dueConcepts = (dueRes.data ?? []).map((concept) => {
     const conceptId = concept?.id ?? concept?.concept_id ?? concept?.conceptId;
-    const fullConcept = conceptId ? conceptsById.get(conceptId) : null;
-    const merged = fullConcept ? { ...fullConcept, ...concept } : concept;
     const attemptCount = attemptCountByConcept.get(conceptId) ?? 0;
     const latestAttempt = conceptId
       ? latestAttemptByConcept.get(conceptId)
       : null;
-    const session = merged.session_id
-      ? sessionsById.get(merged.session_id)
+    const session = concept?.session_id
+      ? sessionsById.get(concept.session_id)
       : null;
     const reviewInFuture = latestAttempt?.review_in_future;
     const examPriorityDue =
       reviewInFuture === false
         ? shouldSurfaceExamPriority({
-            ...merged,
+            ...concept,
             session_exam_summary: session?.exam_summary ?? null,
           })
         : true;
     return {
-      ...merged,
+      ...concept,
       review_in_future: reviewInFuture,
       session_exam_summary: session?.exam_summary ?? null,
       has_quiz_attempt: Boolean(
@@ -195,52 +184,47 @@ export async function GET() {
 
   const hasAnyQuizzes = latestAttemptByConcept.size > 0;
 
-  const conceptsBySession = new Map();
-  for (const concept of conceptsWithLatestRetention) {
-    const sessionId = concept.session_id;
-    if (!sessionId) continue;
-    if (!conceptsBySession.has(sessionId)) conceptsBySession.set(sessionId, []);
-    conceptsBySession.get(sessionId).push(concept);
-  }
-
   const sessionRetentionOverview = sessions
     .map((session) => {
-      const sessionConcepts = conceptsBySession.get(session.id) ?? [];
       const totalConcepts =
         Number(session.concept_count ?? 0) > 0
           ? Number(session.concept_count)
-          : sessionConcepts.length;
+          : 0;
+
+      const sessionConceptIds = Array.from(
+        attemptedConceptIdsBySession.get(session.id) ?? [],
+      );
 
       let attemptedConcepts = 0;
       let latestQuizTimestamp = null;
       const latestScores = [];
       const modelRetentionValues = [];
 
-      for (const concept of sessionConcepts) {
-        const latestAttempt = latestAttemptByConcept.get(concept.id);
-        if (latestAttempt) {
-          attemptedConcepts += 1;
-          const retentionValue = Number(concept.retention_pct);
-          if (Number.isFinite(retentionValue)) {
-            modelRetentionValues.push(
-              Math.max(0, Math.min(100, Math.round(retentionValue))),
-            );
-          }
+      for (const conceptId of sessionConceptIds) {
+        const latestAttempt = latestAttemptByConcept.get(conceptId);
+        if (!latestAttempt) continue;
 
-          const latestScore = Number(latestAttempt.score);
-          if (Number.isFinite(latestScore)) {
-            latestScores.push(
-              Math.max(0, Math.min(100, Math.round(latestScore))),
-            );
-          }
+        attemptedConcepts += 1;
+        const retentionValue = Number(latestRetentionByConcept.get(conceptId));
+        if (Number.isFinite(retentionValue)) {
+          modelRetentionValues.push(
+            Math.max(0, Math.min(100, Math.round(retentionValue))),
+          );
+        }
 
-          const ts = new Date(latestAttempt.attempted_at ?? 0).getTime();
-          if (Number.isFinite(ts)) {
-            latestQuizTimestamp =
-              latestQuizTimestamp === null
-                ? ts
-                : Math.max(latestQuizTimestamp, ts);
-          }
+        const latestScore = Number(latestAttempt.score);
+        if (Number.isFinite(latestScore)) {
+          latestScores.push(
+            Math.max(0, Math.min(100, Math.round(latestScore))),
+          );
+        }
+
+        const ts = new Date(latestAttempt.attempted_at ?? 0).getTime();
+        if (Number.isFinite(ts)) {
+          latestQuizTimestamp =
+            latestQuizTimestamp === null
+              ? ts
+              : Math.max(latestQuizTimestamp, ts);
         }
       }
 
@@ -293,11 +277,11 @@ export async function GET() {
       return leftRetention - rightRetention;
     });
 
-  const globalRetentionValues = conceptsWithLatestRetention
-    .filter((concept) => (attemptCountByConcept.get(concept.id) ?? 0) > 0)
-    .map((concept) => {
-      const storedRetention = Number(concept.retention_pct);
-      return Number.isFinite(storedRetention) ? storedRetention : null;
+  const globalRetentionValues = Array.from(latestRetentionByConcept.entries())
+    .filter(([conceptId]) => (attemptCountByConcept.get(conceptId) ?? 0) > 0)
+    .map(([, storedRetention]) => {
+      const retentionValue = Number(storedRetention);
+      return Number.isFinite(retentionValue) ? retentionValue : null;
     })
     .filter((value) => Number.isFinite(value))
     .map((value) => Math.max(0, Math.min(100, value)));
