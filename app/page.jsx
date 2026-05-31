@@ -865,7 +865,7 @@ export default function LandingPage() {
                 num: "01",
                 icon: "⬆",
                 title: "Upload your notes",
-                desc: "Drop in any PDF, DOCX, or text file from your lectures or textbooks. The AI reads and extracts every distinct concept, maps dependencies, and detects cognitive load.",
+                desc: "Drop in any PDF or text file from your lectures or textbooks. The AI reads and extracts every distinct concept, maps dependencies, and detects cognitive load.",
               },
               {
                 num: "02",
