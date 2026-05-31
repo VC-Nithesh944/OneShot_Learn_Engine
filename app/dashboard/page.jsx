@@ -184,7 +184,6 @@ function SessionsSkeleton() {
           <Skeleton height={18} width="62%" />
         </div>
       </div>
-
       <div className="section-title">Sessions</div>
       <div className="stack">
         {Array.from({ length: 4 }).map((_, index) => (
@@ -202,21 +201,6 @@ function SessionsSkeleton() {
       </div>
 
       <div className="section-title">Concepts in session</div>
-      <div className="card">
-        <div className="kicker">Exam summary</div>
-        <Skeleton height={20} width="46%" />
-        <div style={{ marginTop: 14 }} className="exam-summary-grid">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div className="exam-summary-item" key={index}>
-              <Skeleton height={16} width="58%" />
-              <div style={{ marginTop: 8 }}>
-                <Skeleton height={12} count={2} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       <div className="stack" style={{ marginTop: 12 }}>
         {Array.from({ length: 4 }).map((_, index) => (
           <div className="row-card" key={index} style={{ cursor: "default" }}>
@@ -585,15 +569,88 @@ function Sidebar({
   onClose,
   className = "",
 }) {
+  const [isOnline, setIsOnline] = useState(true);
+
+  useEffect(() => {
+    const updateConnectivity = () => {
+      setIsOnline(window.navigator.onLine);
+    };
+
+    updateConnectivity();
+    window.addEventListener("online", updateConnectivity);
+    window.addEventListener("offline", updateConnectivity);
+
+    const intervalId = window.setInterval(updateConnectivity, 15000);
+
+    return () => {
+      window.removeEventListener("online", updateConnectivity);
+      window.removeEventListener("offline", updateConnectivity);
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
   const visibleItems = NAV_ITEMS.filter(
     (item) => !item.requiresConcept || activeConcept,
   );
 
   return (
     <aside className={`sidebar ${className}`.trim()}>
-      <div className="brand">
-        <div className="brand-name">OneShot</div>
-        <div className="brand-sub">Learning Engine</div>
+      <div
+        className="brand"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          flexWrap: "nowrap",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div className="brand-name">OneShot</div>
+          <div className="brand-sub">Learning Engine</div>
+        </div>
+        <button
+          type="button"
+          disabled
+          title="internet connection"
+          aria-disabled="true"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            borderRadius: 999,
+            border: `1px solid ${isOnline ? "rgba(42,168,136,0.35)" : "rgba(184,64,64,0.35)"}`,
+            background: isOnline
+              ? "rgba(42,168,136,0.12)"
+              : "rgba(184,64,64,0.12)",
+            color: isOnline ? "var(--teal)" : "var(--rose)",
+            fontFamily: "DM Sans, sans-serif",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            padding: "4px 8px",
+            lineHeight: 1,
+            whiteSpace: "nowrap",
+            cursor: "default",
+            opacity: 1,
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: isOnline ? "#2BA888" : "#B84040",
+              boxShadow: isOnline
+                ? "0 0 0 3px rgba(42,168,136,0.12)"
+                : "0 0 0 3px rgba(184,64,64,0.12)",
+              flexShrink: 0,
+            }}
+          />
+          {isOnline ? "Online" : "Offline"}
+        </button>
       </div>
 
       {visibleItems.map((item) => (
@@ -2499,6 +2556,7 @@ export default function DashboardPage() {
   const [sessions, setSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(null);
   const [sessionConcepts, setSessionConcepts] = useState([]);
+  const [sessionConceptPage, setSessionConceptPage] = useState(1);
   const [activeConcept, setActiveConcept] = useState(null);
   const [learnMode, setLearnMode] = useState("simplified");
   const [transformCache, setTransformCache] = useState({});
@@ -2817,6 +2875,7 @@ export default function DashboardPage() {
 
   const openSession = async (session) => {
     setSelectedSession(session);
+    setSessionConceptPage(1);
     setScreen("sessions");
     setSidebarOpen(false);
     setLoading((current) => ({ ...current, concepts: true }));
@@ -3224,6 +3283,8 @@ export default function DashboardPage() {
                 sessions={sessions}
                 selectedSession={selectedSession}
                 concepts={sessionConcepts}
+                conceptPage={sessionConceptPage}
+                onConceptPageChange={setSessionConceptPage}
                 loadingSessions={loading.sessions}
                 loadingConcepts={loading.concepts}
                 onSelectSession={openSession}

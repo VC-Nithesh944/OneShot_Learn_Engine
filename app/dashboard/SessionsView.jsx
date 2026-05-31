@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import Skeleton from "react-loading-skeleton";
 
 import {
@@ -39,7 +39,7 @@ function SessionsSkeleton() {
       <div className="section-title">Concepts in session</div>
 
       <div className="stack" style={{ marginTop: 12 }}>
-        {Array.from({ length: 4 }).map((_, index) => (
+        {Array.from({ length: 5 }).map((_, index) => (
           <div className="row-card" key={index} style={{ cursor: "default" }}>
             <Skeleton circle width={38} height={38} />
             <div className="row-main">
@@ -52,6 +52,24 @@ function SessionsSkeleton() {
           </div>
         ))}
       </div>
+
+      <div
+        className="card"
+        style={{
+          marginTop: 12,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <Skeleton height={14} width="30%" />
+        <div style={{ display: "flex", gap: 8 }}>
+          <Skeleton height={36} width={76} borderRadius={12} />
+          <Skeleton height={36} width={76} borderRadius={12} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -60,6 +78,8 @@ export default function SessionsView({
   sessions,
   selectedSession,
   concepts,
+  conceptPage,
+  onConceptPageChange,
   loadingSessions,
   loadingConcepts,
   onSelectSession,
@@ -69,11 +89,6 @@ export default function SessionsView({
   const examSummary = normalizeExamSummary(
     selectedSession?.exam_summary ?? selectedSession?.examSummary,
   );
-  const [conceptPage, setConceptPage] = useState(1);
-
-  useEffect(() => {
-    setConceptPage(1);
-  }, [selectedSession?.id, concepts.length]);
 
   const totalConceptPages = Math.max(1, Math.ceil(concepts.length / pageSize));
   const safeConceptPage = Math.min(conceptPage, totalConceptPages);
@@ -93,7 +108,7 @@ export default function SessionsView({
 
       <div className="section-title">Sessions</div>
       <div className="stack">
-        {loadingSessions ? (
+        {loadingSessions && sessions.length === 0 ? (
           <SessionsSkeleton />
         ) : sessions.length === 0 ? (
           <div className="empty card">
@@ -164,27 +179,7 @@ export default function SessionsView({
           )}
           {loadingConcepts ? (
             <div className="stack">
-              <Skeleton height={24} width="36%" />
-              {selectedSession ? <Skeleton height={12} width="54%" /> : null}
-              {selectedSession ? (
-                <div className="card">
-                  <Skeleton height={16} width="28%" />
-                  <div style={{ marginTop: 12 }}>
-                    <Skeleton height={18} width="42%" />
-                  </div>
-                  <div style={{ marginTop: 14 }} className="exam-summary-grid">
-                    {Array.from({ length: 3 }).map((_, index) => (
-                      <div className="exam-summary-item" key={index}>
-                        <Skeleton height={16} width="58%" />
-                        <div style={{ marginTop: 8 }}>
-                          <Skeleton height={12} count={2} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              {Array.from({ length: 4 }).map((_, index) => (
+              {Array.from({ length: 5 }).map((_, index) => (
                 <div
                   className="row-card"
                   key={index}
@@ -196,10 +191,33 @@ export default function SessionsView({
                     <div style={{ marginTop: 8 }}>
                       <Skeleton height={12} width="70%" />
                     </div>
+                    <div style={{ marginTop: 8 }}>
+                      <Skeleton height={12} width="54%" />
+                    </div>
                   </div>
                   <Skeleton height={28} width={84} borderRadius={999} />
                 </div>
               ))}
+
+              {concepts.length > 0 && concepts.length > 5 && (
+                <div
+                  className="card"
+                  style={{
+                    marginTop: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Skeleton height={14} width="30%" />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Skeleton height={36} width={76} borderRadius={12} />
+                    <Skeleton height={36} width={76} borderRadius={12} />
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="stack">
@@ -307,7 +325,7 @@ export default function SessionsView({
                     type="button"
                     className="btn btn-secondary"
                     onClick={() =>
-                      setConceptPage((current) => Math.max(1, current - 1))
+                      onConceptPageChange((current) => Math.max(1, current - 1))
                     }
                   >
                     Prev
@@ -318,7 +336,7 @@ export default function SessionsView({
                     type="button"
                     className="btn btn-secondary"
                     onClick={() =>
-                      setConceptPage((current) =>
+                      onConceptPageChange((current) =>
                         Math.min(totalConceptPages, current + 1),
                       )
                     }
