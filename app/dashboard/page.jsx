@@ -617,7 +617,7 @@ function Sidebar({
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 6,
+            gap: isOnline ? 6 : 5,
             borderRadius: 999,
             border: `1px solid ${isOnline ? "rgba(42,168,136,0.35)" : "rgba(184,64,64,0.35)"}`,
             background: isOnline
@@ -625,11 +625,11 @@ function Sidebar({
               : "rgba(184,64,64,0.12)",
             color: isOnline ? "var(--teal)" : "var(--rose)",
             fontFamily: "DM Sans, sans-serif",
-            fontSize: 10,
+            fontSize: isOnline ? 10 : 9.5,
             fontWeight: 700,
-            letterSpacing: "0.04em",
+            letterSpacing: isOnline ? "0.04em" : "0.03em",
             textTransform: "uppercase",
-            padding: "4px 8px",
+            padding: isOnline ? "4px 8px" : "3px 7px",
             lineHeight: 1,
             whiteSpace: "nowrap",
             cursor: "default",
@@ -639,7 +639,7 @@ function Sidebar({
           <span
             aria-hidden="true"
             style={{
-              width: 6,
+              width: isOnline ? 6 : 5,
               height: 6,
               borderRadius: "50%",
               background: isOnline ? "#2BA888" : "#B84040",
