@@ -215,6 +215,15 @@ export default function SessionsView({
                   const concept = normalizeConcept(raw);
                   const hasQuizAttempt = Boolean(concept.hasQuizAttempt);
                   const isMastered = Boolean(concept.isMastered);
+                  const retentionValue = Number(concept.retentionPct);
+                  const optedOutWithHighRetention =
+                    concept.review_in_future === false &&
+                    Number.isFinite(retentionValue) &&
+                    retentionValue > 65;
+                  const hasActiveSpacedReview =
+                    Boolean(concept.nextReviewAt) &&
+                    !isMastered &&
+                    !optedOutWithHighRetention;
                   return (
                     <div
                       key={concept.id}
@@ -242,10 +251,17 @@ export default function SessionsView({
                           {isMastered ? (
                             <>Mastered ✓ · Spaced reviews complete</>
                           ) : hasQuizAttempt ? (
-                            <>
-                              Retention {Math.round(concept.retentionPct)}%.
-                              Quiz again to boost retention.
-                            </>
+                            hasActiveSpacedReview ? (
+                              <>
+                                Retention {Math.round(concept.retentionPct)}%.
+                                Quiz again to boost retention.
+                              </>
+                            ) : (
+                              <>
+                                Retention {Math.round(concept.retentionPct)}%.
+                                No active spaced review.
+                              </>
+                            )
                           ) : (
                             "New concept · Quiz once to estimate retention"
                           )}

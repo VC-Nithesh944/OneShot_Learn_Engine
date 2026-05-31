@@ -140,7 +140,7 @@ export default function QuizView({
           </div>
           <div className="muted" style={{ marginTop: 8 }}>
             Tick keeps the concept in the normal spaced-review flow. X lets the
-            app decide based on retention and exam priority.
+            app decide based on retention only.
           </div>
         </div>
       )}

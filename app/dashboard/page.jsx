@@ -784,13 +784,6 @@ function DashboardView({
                     {concept.category} ·{" "}
                     {concept.subject ?? dueLabel(concept.nextReviewAt, nowMs)}
                   </div>
-                  {concept.review_in_future === false &&
-                    concept.due_by_exam_priority && (
-                      <div className="row-meta" style={{ marginTop: 4 }}>
-                        Exam-priority review · based on retention and exam
-                        signal
-                      </div>
-                    )}
                   <div className="row-meta" style={{ marginTop: 4 }}>
                     {isMastered ? (
                       <>Mastered ✓ · Spaced reviews complete</>
@@ -1543,7 +1536,7 @@ function QuizView({
           </div>
           <div className="muted" style={{ marginTop: 8 }}>
             Tick keeps the concept in the normal spaced-review flow. X lets the
-            app decide based on retention and exam priority.
+            app decide based on retention only.
           </div>
         </div>
       )}
@@ -2499,15 +2492,8 @@ function ProfileView({ onUpdated, refreshToken = 0 }) {
 export default function DashboardPage() {
   const { signOut } = useClerk();
   const [screen, setScreen] = useState("dashboard");
-  const [theme, setTheme] = useState(() => {
-    if (typeof window === "undefined") return "dark";
-
-    try {
-      return window.localStorage.getItem("oneshot-theme") ?? "dark";
-    } catch {
-      return "dark";
-    }
-  });
+  const [theme, setTheme] = useState("dark");
+  const [themeHydrated, setThemeHydrated] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dashboard, setDashboard] = useState(null);
   const [sessions, setSessions] = useState([]);
@@ -2558,6 +2544,19 @@ export default function DashboardPage() {
   const refreshData = () => setRefreshTick((tick) => tick + 1);
 
   useEffect(() => {
+    if (!themeHydrated) {
+      try {
+        const storedTheme = window.localStorage.getItem("oneshot-theme");
+        if (storedTheme === "light" || storedTheme === "dark") {
+          setTheme(storedTheme);
+        }
+      } catch {
+        // Ignore storage failures and keep the default theme.
+      }
+      setThemeHydrated(true);
+      return;
+    }
+
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
     try {
@@ -2565,7 +2564,7 @@ export default function DashboardPage() {
     } catch {
       // Ignore storage failures and keep the in-memory theme active.
     }
-  }, [theme]);
+  }, [theme, themeHydrated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2992,14 +2991,14 @@ export default function DashboardPage() {
                 : current.retention_pct,
               quizAttemptCount: Number(current.quizAttemptCount ?? 0) + 1,
               quiz_attempt_count: Number(current.quiz_attempt_count ?? 0) + 1,
-              nextReviewAt: updatedNextReviewAt ?? current.nextReviewAt,
-              next_review_at: updatedNextReviewAt ?? current.next_review_at,
+              nextReviewAt: updatedNextReviewAt,
+              next_review_at: updatedNextReviewAt,
               review_in_future:
                 quizResult.reviewFuture ?? current.review_in_future,
               reviewInFuture: quizResult.reviewFuture ?? current.reviewInFuture,
               isMastered: mastered || current.isMastered,
-              isDueReview: mastered ? false : current.isDueReview,
-              is_due_review: mastered ? false : current.is_due_review,
+              isDueReview: false,
+              is_due_review: false,
             }
           : current,
       );
@@ -3017,8 +3016,8 @@ export default function DashboardPage() {
                   : concept.retention_pct,
                 quizAttemptCount: Number(concept.quizAttemptCount ?? 0) + 1,
                 quiz_attempt_count: Number(concept.quiz_attempt_count ?? 0) + 1,
-                nextReviewAt: updatedNextReviewAt ?? concept.nextReviewAt,
-                next_review_at: updatedNextReviewAt ?? concept.next_review_at,
+                nextReviewAt: updatedNextReviewAt,
+                next_review_at: updatedNextReviewAt,
                 review_in_future:
                   quizResult.reviewFuture ?? concept.review_in_future,
                 reviewInFuture:

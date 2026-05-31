@@ -165,6 +165,17 @@ export async function GET() {
       if (!nextReviewAt) return false;
       const nextReviewTime = new Date(nextReviewAt).getTime();
       if (!Number.isFinite(nextReviewTime)) return false;
+      const retention = Number(
+        concept?.estimatedRetentionPct ??
+          concept?.estimated_retention_pct ??
+          concept?.retentionPct ??
+          concept?.retention_pct,
+      );
+      const optedOutWithHighRetention =
+        concept?.review_in_future === false &&
+        Number.isFinite(retention) &&
+        retention > 65;
+      if (optedOutWithHighRetention) return false;
       return (
         nextReviewTime >= todayStart.getTime() &&
         nextReviewTime < tomorrowStart.getTime()

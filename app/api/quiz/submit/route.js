@@ -22,8 +22,6 @@ function calculateEstimatedRetention({
   qualityRating,
   timeTakenMs,
   attemptCount,
-  reviewFuture,
-  examProbability,
 }) {
   const accuracy = clamp(Number(score) || 0, 0, 100) / 100;
   const avgSecondsPerQuestion =
@@ -58,24 +56,8 @@ function calculateEstimatedRetention({
           ? 1.02
           : 0.98;
 
-  const examFactor =
-    examProbability >= 5
-      ? 1.06
-      : examProbability >= 4
-        ? 1.03
-        : examProbability >= 3
-          ? 1.01
-          : 0.98;
-
-  const intentFactor = reviewFuture ? 1.03 : 0.97;
-
   const blended =
-    (18 + accuracy * 48) *
-    paceFactor *
-    qualityFactor *
-    repetitionFactor *
-    examFactor *
-    intentFactor;
+    (18 + accuracy * 48) * paceFactor * qualityFactor * repetitionFactor;
   return Math.round(clamp(blended, 12, 98));
 }
 
@@ -254,11 +236,18 @@ export async function POST(request) {
     qualityRating,
     timeTakenMs,
     attemptCount: quizAttemptCount ?? 0,
-    reviewFuture: Boolean(reviewFuture),
-    examProbability: Number(conceptRow?.exam_probability ?? 3),
   });
 
-  const cumulativeSchedule = computeCumulativeNextReview(quizAttemptCount ?? 0);
+  const shouldScheduleSpacedReview =
+    Boolean(reviewFuture) || estimatedRetentionPct <= 65;
+  const cumulativeSchedule = shouldScheduleSpacedReview
+    ? computeCumulativeNextReview(quizAttemptCount ?? 0)
+    : {
+        interval_days: null,
+        next_review_date: null,
+        failed: false,
+        is_mastered: false,
+      };
 
   smResult = {
     ...smResult,
@@ -317,10 +306,13 @@ export async function POST(request) {
       nextReviewDate ?? smResult.next_review_date ?? smResult.nextReviewDate,
     retentionPct: estimatedRetentionPct,
     estimatedRetentionPct,
+    spacedReviewScheduled: shouldScheduleSpacedReview,
     masteredMilestone,
     reviewFuture: Boolean(reviewFuture),
     message: masteredMilestone
       ? "Concept mastered - you can keep practicing anytime."
-      : `Next review in ${smResult.interval_days ?? smResult.intervalDays ?? 1} day(s). Estimated retention: ${estimatedRetentionPct}%`,
+      : shouldScheduleSpacedReview
+        ? `Added to spaced review. Next review in ${smResult.interval_days ?? smResult.intervalDays ?? 1} day(s). Estimated retention: ${estimatedRetentionPct}%`
+        : `Retention ${estimatedRetentionPct}% is strong, so this concept was not added to spaced review.`,
   });
 }

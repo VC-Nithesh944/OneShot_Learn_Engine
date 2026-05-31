@@ -2,11 +2,10 @@
 
 import Skeleton from "react-loading-skeleton";
 
-import { dueLabel, reviewTimingLabelFromDays } from "./dashboardShared";
+import { dueLabel } from "./dashboardShared";
 import {
   getRecommendedLearnMode,
   getRetentionCurve,
-  getSpacedReviewSchedule,
 } from "@/lib/memorySignals";
 
 export default function LearnView({
@@ -45,12 +44,18 @@ export default function LearnView({
   const examPriority = concept.examPriority;
   const hasQuizAttempt = Boolean(concept.hasQuizAttempt);
   const isMastered = Boolean(concept.isMastered);
+  const retentionValue = Number(concept.retentionPct);
+  const optedOutWithHighRetention =
+    concept.review_in_future === false &&
+    Number.isFinite(retentionValue) &&
+    retentionValue > 65;
+  const hasActiveSpacedReview =
+    Boolean(concept.nextReviewAt) && !isMastered && !optedOutWithHighRetention;
   const retentionCurve =
     hasQuizAttempt && !isMastered ? getRetentionCurve(concept) : null;
   const quizRetentionPct = Number.isFinite(Number(concept.retentionPct))
     ? Math.round(Number(concept.retentionPct))
     : null;
-  const spacedSchedule = getSpacedReviewSchedule(concept.quizAttemptCount ?? 0);
   const recommendedMode = getRecommendedLearnMode(concept, learningStyle);
   const recommendedLabel =
     modes.find((item) => item.id === recommendedMode)?.label ?? recommendedMode;
@@ -117,15 +122,11 @@ export default function LearnView({
               <div className="kicker">Memory curve</div>
               <div className="row-title">{quizRetentionPct ?? 0}% retained</div>
               <div className="muted" style={{ marginTop: 6 }}>
-                {isMastered
-                  ? "Concept mastered — no active spaced reviews."
-                  : concept.nextReviewAt
-                    ? `Next Review ${dueLabel(concept.nextReviewAt, nowMs)}`
-                    : spacedSchedule.intervalDays
-                      ? `Next Review ${reviewTimingLabelFromDays(spacedSchedule.intervalDays)}`
-                      : "Due Today"}
+                {hasActiveSpacedReview
+                  ? `Next Review ${dueLabel(concept.nextReviewAt, nowMs)}`
+                  : "No active spaced review."}
               </div>
-              {retentionCurve && (
+              {hasActiveSpacedReview && retentionCurve && (
                 <div className="muted" style={{ marginTop: 8 }}>
                   This Concept is added for Spaced Review.
                 </div>

@@ -236,13 +236,6 @@ export default function DashboardView({
                     {concept.category} ·{" "}
                     {concept.subject ?? dueLabel(concept.nextReviewAt, nowMs)}
                   </div>
-                  {concept.review_in_future === false &&
-                    concept.due_by_exam_priority && (
-                      <div className="row-meta" style={{ marginTop: 4 }}>
-                        Exam-priority review · based on retention and exam
-                        signal
-                      </div>
-                    )}
                   <div className="row-meta" style={{ marginTop: 4 }}>
                     {isMastered ? (
                       <>Mastered ✓ · Spaced reviews complete</>
