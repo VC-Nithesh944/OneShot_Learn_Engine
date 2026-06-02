@@ -281,7 +281,7 @@ export function SessionRetentionRow({ item, onOpenSessions }) {
     >
       <div
         style={{ cursor: "pointer" }}
-        onClick={onOpenSessions}
+        onClick={() => onOpenSessions?.(item)}
         title={item.title}
       >
         <div className="row-title" style={{ fontSize: 14 }}>

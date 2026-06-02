@@ -126,7 +126,8 @@ export async function GET() {
         ? latestAttemptByConcept.get(conceptId)
         : null;
       const latestRetentionPct = Number(latestAttempt?.estimated_retention_pct);
-      const latestNextReviewAt = latestAttempt?.next_review_at ?? null;
+      const latestNextReviewAt =
+        latestAttempt?.next_review_at ?? concept?.next_review_at ?? null;
       const reviewInFuture = latestAttempt?.review_in_future;
       return {
         ...concept,
@@ -176,10 +177,7 @@ export async function GET() {
         Number.isFinite(retention) &&
         retention > 65;
       if (optedOutWithHighRetention) return false;
-      return (
-        nextReviewTime >= todayStart.getTime() &&
-        nextReviewTime < tomorrowStart.getTime()
-      );
+      return nextReviewTime < tomorrowStart.getTime();
     })
     .sort((left, right) => {
       const leftRetention = Number.isFinite(left.estimatedRetentionPct)

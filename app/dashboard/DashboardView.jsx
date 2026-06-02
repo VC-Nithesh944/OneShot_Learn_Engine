@@ -102,7 +102,7 @@ export default function DashboardView({
 
   useEffect(() => {
     setDuePage(1);
-  }, [dueConcepts.length]);
+  }, [dueConcepts]);
 
   const totalDuePages = Math.max(1, Math.ceil(dueConcepts.length / pageSize));
   const safeDuePage = Math.min(duePage, totalDuePages);

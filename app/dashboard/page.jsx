@@ -2557,6 +2557,7 @@ export default function DashboardPage() {
   const [selectedSession, setSelectedSession] = useState(null);
   const [sessionConcepts, setSessionConcepts] = useState([]);
   const [sessionConceptPage, setSessionConceptPage] = useState(1);
+  const [pendingSessionId, setPendingSessionId] = useState(null);
   const [activeConcept, setActiveConcept] = useState(null);
   const [learnMode, setLearnMode] = useState("simplified");
   const [transformCache, setTransformCache] = useState({});
@@ -2897,6 +2898,43 @@ export default function DashboardPage() {
       setLoading((current) => ({ ...current, concepts: false }));
     }
   };
+
+  const openSessionsFromDashboard = (sessionLike = null) => {
+    const sessionId = sessionLike?.id ?? sessionLike ?? null;
+
+    if (!sessionId) {
+      setScreen("sessions");
+      setSidebarOpen(false);
+      return;
+    }
+
+    const matchedSession = sessions.find(
+      (session) => String(session?.id ?? "") === String(sessionId),
+    );
+
+    if (matchedSession) {
+      void openSession(matchedSession);
+      return;
+    }
+
+    setPendingSessionId(sessionId);
+    setScreen("sessions");
+    setSidebarOpen(false);
+  };
+
+  useEffect(() => {
+    if (!pendingSessionId) return;
+    if (loading.sessions) return;
+    if (!sessions.length) return;
+
+    const matchedSession = sessions.find(
+      (session) => String(session?.id ?? "") === String(pendingSessionId),
+    );
+
+    if (!matchedSession) return;
+    setPendingSessionId(null);
+    void openSession(matchedSession);
+  }, [pendingSessionId, sessions, loading.sessions]);
 
   const handleUpload = async (file, subjectName, setCountdownEstimate) => {
     if (!file || !subjectName) return;
@@ -3261,7 +3299,7 @@ export default function DashboardPage() {
                 loading={loading.overview}
                 onOpenConcept={openConcept}
                 onOpenUpload={() => setScreen("upload")}
-                onOpenSessions={() => setScreen("sessions")}
+                onOpenSessions={openSessionsFromDashboard}
                 nowMs={nowMs}
               />
             )}

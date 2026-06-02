@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import Skeleton from "react-loading-skeleton";
 
 import {
@@ -86,6 +86,8 @@ export default function SessionsView({
   onOpenConcept,
 }) {
   const pageSize = 5;
+  const conceptsAnchorRef = useRef(null);
+  const paginationAnchorRef = useRef(null);
   const examSummary = normalizeExamSummary(
     selectedSession?.exam_summary ?? selectedSession?.examSummary,
   );
@@ -96,6 +98,19 @@ export default function SessionsView({
     const startIndex = (safeConceptPage - 1) * pageSize;
     return concepts.slice(startIndex, startIndex + pageSize);
   }, [concepts, safeConceptPage]);
+
+  useEffect(() => {
+    if (!selectedSession || loadingConcepts) return;
+
+    const target = paginationAnchorRef.current ?? conceptsAnchorRef.current;
+    if (!target) return;
+
+    const timeoutId = window.setTimeout(() => {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [selectedSession?.id, loadingConcepts]);
 
   return (
     <div>
@@ -144,7 +159,7 @@ export default function SessionsView({
       </div>
 
       {selectedSession && (
-        <>
+        <div ref={conceptsAnchorRef}>
           <div className="section-title">
             Concepts in {selectedSession.topic ?? selectedSession.filename}
           </div>
@@ -300,6 +315,7 @@ export default function SessionsView({
           )}
           {concepts.length > pageSize && (
             <div
+              ref={paginationAnchorRef}
               className="card"
               style={{
                 marginTop: 12,
@@ -347,7 +363,7 @@ export default function SessionsView({
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
